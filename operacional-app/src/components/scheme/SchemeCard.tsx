@@ -1,0 +1,112 @@
+import { Clock, MapPin, Route, ChevronRight } from "lucide-react";
+
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+import type { OperationalScheme } from "@/types/scheme";
+
+interface SchemeCardProps {
+  scheme: OperationalScheme;
+  onClick: () => void;
+}
+
+export function SchemeCard({ scheme, onClick }: SchemeCardProps) {
+  // 👉 km: primeiro tenta usar o resumo (totalKm), se não tiver,
+  // cai para o acumulado do último ponto
+  const lastPoint = scheme.routePoints[scheme.routePoints.length - 1] ?? null;
+
+  const totalKm =
+    (typeof scheme.totalKm === "number" && scheme.totalKm > 0
+      ? scheme.totalKm
+      : lastPoint?.accumulatedDistance) ?? 0;
+
+  // 👉 paradas: se vier do resumo (totalStops), usa. Senão, conta nos pontos
+  const stopsFromPoints = scheme.routePoints.filter(
+    (p) => p.pointType === "PP" || p.pointType === "PA"
+  ).length;
+
+  const totalStops =
+    typeof scheme.totalStops === "number" ? scheme.totalStops : stopsFromPoints;
+
+  // quantidade de pontos cadastrados
+  const totalPoints = scheme.routePoints.length;
+
+  return (
+    <Card
+      onClick={onClick}
+      className="p-6 hover:shadow-lg transition-all cursor-pointer border border-slate-200 bg-white hover:border-blue-300 group"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          {/* Header */}
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+              <Route className="w-6 h-6 text-blue-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <h3 className="text-slate-900">{scheme.lineCode}</h3>
+                <Badge
+                  variant="outline"
+                  className={
+                    scheme.direction === "Ida"
+                      ? "border-green-300 text-green-700 bg-green-50"
+                      : "border-purple-300 text-purple-700 bg-purple-50"
+                  }
+                >
+                  {scheme.direction}
+                </Badge>
+              </div>
+              <p className="text-slate-700">{scheme.lineName}</p>
+            </div>
+          </div>
+
+          {/* Informações */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div className="flex items-center gap-2 text-slate-600">
+              <MapPin className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm truncate">
+                {scheme.origin} ({scheme.originState}) → {scheme.destination} (
+                {scheme.destinationState})
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-600">
+              <Clock className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm">Horário: {scheme.tripTime || "—"}</span>
+            </div>
+          </div>
+
+          {/* Resumo */}
+          <div className="flex flex-wrap gap-4 text-sm">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
+              <span className="text-slate-600">
+                <span className="text-slate-900">{totalKm.toFixed(1)} km</span>{" "}
+                totais
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-slate-600">
+                <span className="text-slate-900">{totalStops}</span> parada
+                {totalStops !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-purple-500" />
+              <span className="text-slate-600">
+                <span className="text-slate-900">{totalPoints}</span> ponto
+                {totalPoints !== 1 ? "s" : ""}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Seta */}
+        <div className="flex items-center">
+          <ChevronRight className="w-6 h-6 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+        </div>
+      </div>
+    </Card>
+  );
+}
