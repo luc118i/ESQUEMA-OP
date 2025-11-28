@@ -18,6 +18,9 @@ export interface RoutePoint {
     lat: number;
     lng: number;
   } | null;
+
+  avgSpeed?: number;
+  justification?: string;
 }
 
 export interface InitialPoint {
@@ -45,10 +48,17 @@ export interface OperationalScheme {
   initialPoint?: InitialPoint;
   routePoints: RoutePoint[];
 
-  // 👉 campos que o card e o detalhe podem usar
+  // 👉 métricas numéricas
   totalKm?: number;
+
+  // total de registros (tudo) – você pode manter como alias de totalParadas
   totalStops?: number;
-  totalExpectedStops?: number;
+
+  // 🆕 campos alinhados com o SchemeSummary do backend
+  totalParadas?: number; // summary.totalParadas (== totalStops)
+  totalPontos?: number; // summary.totalPontos
+
+  totalExpectedStops?: number; // summary.expectedStops.value
 
   totalTravelMinutes?: number;
   totalStopMinutes?: number;
@@ -65,4 +75,64 @@ export interface OperationalScheme {
 
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface SchemeLocation {
+  id: string;
+  cidade: string;
+  uf: string;
+  descricao: string | null;
+  lat: number;
+  lng: number;
+}
+
+export interface SchemeWithLocations {
+  id: string;
+  codigo: string;
+  nome: string;
+  origem_location_id: string;
+  destino_location_id: string;
+  distancia_total_km: number;
+  ativo: boolean;
+  created_at: string;
+  updated_at?: string | null;
+  trip_time?: string | null;
+
+  origem_location?: SchemeLocation | null;
+  destino_location?: SchemeLocation | null;
+}
+
+export interface SchemeSummary {
+  schemeId: string;
+  schemeCodigo: string;
+  schemeNome: string;
+
+  totalKm: number;
+
+  totalStops: number;
+  totalParadas: number;
+  totalPontos: number;
+
+  expectedStops: {
+    value: number;
+    totalKm: number;
+    ruleKm: number;
+  };
+
+  totalTravelMinutes: number;
+  totalStopMinutes: number;
+  totalDurationMinutes: number;
+  averageSpeedKmH: number | null;
+
+  countsByType: Record<string, number>;
+  longSegmentsCount: number;
+  rulesStatus: {
+    status: "OK" | "WARNING" | "ERROR";
+    message: string;
+  };
+}
+
+export interface SchemeListItem {
+  scheme: SchemeWithLocations;
+  summary: SchemeSummary;
 }

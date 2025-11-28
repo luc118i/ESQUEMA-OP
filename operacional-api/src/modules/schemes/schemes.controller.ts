@@ -1,7 +1,7 @@
 // src/modules/schemes/schemes.controller.ts
 import type { Request, Response } from "express";
 import {
-  getAllSchemes,
+  getAllSchemesWithSummary,
   getSchemeById,
   createScheme,
   updateScheme,
@@ -13,8 +13,8 @@ import { getSchemeSummary } from "./schemes.service";
 
 export async function listSchemesHandler(_req: Request, res: Response) {
   try {
-    const schemes = await getAllSchemes();
-    return res.json(schemes);
+    const schemesWithSummary = await getAllSchemesWithSummary();
+    return res.json(schemesWithSummary);
   } catch (err) {
     console.error("[listSchemesHandler]", err);
     return res

@@ -2,17 +2,15 @@
 
 // Ajuste esses campos para bater 100% com a tabela `locations` do Supabase
 export interface Location {
-  id: string; // uuid
+  id: string;
   sigla: string;
   descricao: string;
   cidade: string;
   uf: string;
-
-  tipo_local: string; // ex: "Terminal", "Posto", "Restaurante"
-  latitude: number | null;
-  longitude: number | null;
-
-  created_at: string;
+  tipo: string;
+  lat: number;
+  lng: number;
+  created_at: string | null;
 }
 
 // Payload para criar um local (não envia id/created_at)

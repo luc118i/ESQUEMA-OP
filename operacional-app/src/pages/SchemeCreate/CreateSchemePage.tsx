@@ -23,202 +23,32 @@ interface CreateSchemePageProps {
   onBack: () => void;
 }
 
-// Mock data para linhas cadastradas
-const mockLines = {
-  DFG0053049: {
-    code: "DFG0053049",
-    name: "Linha Brasília - São Paulo",
-    origin: "BRASÍLIA",
-    destination: "SÃO PAULO",
-    originState: "DF",
-    destinationState: "SP",
-    initialPoint: {
-      name: "Garagem Brasília",
-      city: "Brasília",
-      state: "DF",
-      lat: -15.7942,
-      lng: -47.8822,
-    },
-  },
-  SPG0021034: {
-    code: "SPG0021034",
-    name: "Linha São Paulo - Rio de Janeiro",
-    origin: "SÃO PAULO",
-    destination: "RIO DE JANEIRO",
-    originState: "SP",
-    destinationState: "RJ",
-    initialPoint: {
-      name: "Garagem São Paulo",
-      city: "São Paulo",
-      state: "SP",
-      lat: -23.5505,
-      lng: -46.6333,
-    },
-  },
-};
+import { createSchemeHandlers } from "./createSchemeHandlers";
+
+type Direction = "ida" | "volta";
 
 export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
   const [lineCode, setLineCode] = useState("");
   const [selectedLine, setSelectedLine] = useState<any>(null);
-  const [direction, setDirection] = useState("");
+  const [direction, setDirection] = useState<Direction | "">("");
   const [tripTime, setTripTime] = useState("");
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const handleLineCodeChange = (code: string) => {
-    setLineCode(code);
-    const line = mockLines[code as keyof typeof mockLines];
-    if (line) {
-      setSelectedLine(line);
-    } else {
-      setSelectedLine(null);
-    }
-  };
-
-  const handleAddPoint = (point: any) => {
-    const lastPoint =
-      routePoints.length > 0 ? routePoints[routePoints.length - 1] : null;
-    const previousLocation = lastPoint || selectedLine?.initialPoint;
-
-    // Calcular distância usando fórmula de Haversine simplificada
-    const distance = calculateDistance(
-      previousLocation.lat,
-      previousLocation.lng,
-      point.lat,
-      point.lng
-    );
-
-    // Calcular tempo de deslocamento baseado na velocidade média padrão (80 km/h)
-    const travelTimeMinutes = Math.round((distance / point.avgSpeed) * 60);
-
-    // Calcular horário de chegada
-    let arrivalTime = "";
-    if (lastPoint) {
-      arrivalTime = addMinutesToTime(
-        lastPoint.departureTime,
-        travelTimeMinutes
-      );
-    } else if (tripTime) {
-      arrivalTime = addMinutesToTime(tripTime, travelTimeMinutes);
-    }
-
-    // Calcular horário de saída (chegada + tempo local)
-    const departureTime = addMinutesToTime(arrivalTime, point.localTime);
-
-    const accumulatedDistance =
-      (lastPoint?.accumulatedDistance || 0) + distance;
-
-    const newPoint: RoutePoint = {
-      id: `point-${Date.now()}`,
-      city: point.city,
-      state: point.state,
-      arrivalTime,
-      localTime: point.localTime,
-      departureTime,
-      travelTime: travelTimeMinutes,
-      avgSpeed: point.avgSpeed,
-      distance,
-      pointType: point.pointType,
-      justification: point.justification || "",
-      lat: point.lat,
-      lng: point.lng,
-      accumulatedDistance,
-    };
-
-    setRoutePoints([...routePoints, newPoint]);
-    setIsModalOpen(false);
-  };
-
-  const handleUpdatePoint = (id: string, updates: Partial<RoutePoint>) => {
-    setRoutePoints((prevPoints) => {
-      const pointIndex = prevPoints.findIndex((p) => p.id === id);
-      if (pointIndex === -1) return prevPoints;
-
-      const newPoints = [...prevPoints];
-      const updatedPoint = { ...newPoints[pointIndex], ...updates };
-
-      // Se mudou o tempo local ou velocidade, recalcular horários
-      if (updates.localTime !== undefined || updates.avgSpeed !== undefined) {
-        updatedPoint.departureTime = addMinutesToTime(
-          updatedPoint.arrivalTime,
-          updatedPoint.localTime
-        );
-
-        if (updates.avgSpeed !== undefined) {
-          updatedPoint.travelTime = Math.round(
-            (updatedPoint.distance / updatedPoint.avgSpeed) * 60
-          );
-        }
-      }
-
-      newPoints[pointIndex] = updatedPoint;
-
-      // Recalcular horários dos pontos seguintes
-      for (let i = pointIndex + 1; i < newPoints.length; i++) {
-        const prevPoint = newPoints[i - 1];
-        newPoints[i].arrivalTime = addMinutesToTime(
-          prevPoint.departureTime,
-          newPoints[i].travelTime
-        );
-        newPoints[i].departureTime = addMinutesToTime(
-          newPoints[i].arrivalTime,
-          newPoints[i].localTime
-        );
-      }
-
-      return newPoints;
-    });
-  };
-
-  const handleDeletePoint = (id: string) => {
-    setRoutePoints((prevPoints) => {
-      const pointIndex = prevPoints.findIndex((p) => p.id === id);
-      if (pointIndex === -1) return prevPoints;
-
-      const newPoints = prevPoints.filter((p) => p.id !== id);
-
-      // Recalcular distâncias e horários dos pontos seguintes
-      for (let i = pointIndex; i < newPoints.length; i++) {
-        const prevPoint = i > 0 ? newPoints[i - 1] : null;
-        const previousLocation = prevPoint || selectedLine?.initialPoint;
-
-        if (previousLocation) {
-          const distance = calculateDistance(
-            previousLocation.lat,
-            previousLocation.lng,
-            newPoints[i].lat,
-            newPoints[i].lng
-          );
-
-          newPoints[i].distance = distance;
-          newPoints[i].travelTime = Math.round(
-            (distance / newPoints[i].avgSpeed) * 60
-          );
-          newPoints[i].accumulatedDistance =
-            (prevPoint?.accumulatedDistance || 0) + distance;
-
-          if (prevPoint) {
-            newPoints[i].arrivalTime = addMinutesToTime(
-              prevPoint.departureTime,
-              newPoints[i].travelTime
-            );
-          } else if (tripTime) {
-            newPoints[i].arrivalTime = addMinutesToTime(
-              tripTime,
-              newPoints[i].travelTime
-            );
-          }
-
-          newPoints[i].departureTime = addMinutesToTime(
-            newPoints[i].arrivalTime,
-            newPoints[i].localTime
-          );
-        }
-      }
-
-      return newPoints;
-    });
-  };
+  const {
+    handleLineCodeChange,
+    handleAddPoint,
+    handleUpdatePoint,
+    handleDeletePoint,
+  } = createSchemeHandlers({
+    routePoints,
+    setRoutePoints,
+    selectedLine,
+    setSelectedLine,
+    tripTime,
+    setLineCode,
+    setIsModalOpen,
+  });
 
   return (
     <div className="min-h-screen">
@@ -261,15 +91,16 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
             {/* Sentido */}
             <div className="space-y-2">
               <Label htmlFor="direction">Sentido</Label>
-              <Select value={direction} onValueChange={setDirection}>
-                <SelectTrigger id="direction">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ida">Ida</SelectItem>
-                  <SelectItem value="volta">Volta</SelectItem>
-                </SelectContent>
-              </Select>
+              <select
+                id="direction"
+                className="border-input flex h-9 w-full items-center justify-between gap-2 rounded-md border bg-input-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={direction}
+                onChange={(e) => setDirection(e.target.value as Direction)}
+              >
+                <option value="">Selecione...</option>
+                <option value="ida">Ida</option>
+                <option value="volta">Volta</option>
+              </select>
             </div>
 
             {/* Horário da Viagem */}
@@ -341,7 +172,8 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                 <Map className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>Nenhum ponto adicionado ainda</p>
                 <p className="text-sm mt-1">
-                  Clique em "Adicionar Ponto" para começar a montar a rota
+                  Clique em &quot;Adicionar Ponto&quot; para começar a montar a
+                  rota
                 </p>
               </div>
             ) : (

@@ -10,6 +10,8 @@ import type {
 
 import type { SchemePoint } from "../schemePoints/schemePoints.types";
 
+import type { SchemeWithSummary } from "./schemes.types";
+
 // src/modules/schemes/schemes.service.ts
 
 export async function getAllSchemes(): Promise<SchemeWithLocations[]> {
@@ -70,6 +72,59 @@ export async function getAllSchemes(): Promise<SchemeWithLocations[]> {
   }));
 
   return schemes;
+}
+
+export async function getAllSchemesWithSummary(): Promise<SchemeWithSummary[]> {
+  // 1) Busca todos os esquemas com locations
+  const schemes = await getAllSchemes();
+
+  // 2) Para cada esquema, buscar o summary
+  const result: SchemeWithSummary[] = [];
+
+  for (const scheme of schemes) {
+    const summary = await getSchemeSummary(scheme.id);
+
+    // Pela lógica, se o esquema existe, o summary não deveria ser null.
+    // Mas se vier null por algum motivo, tratamos com um fallback simples.
+    if (!summary) {
+      result.push({
+        scheme,
+        summary: {
+          schemeId: scheme.id,
+          schemeCodigo: scheme.codigo,
+          schemeNome: scheme.nome,
+
+          totalKm: scheme.distancia_total_km,
+          totalStops: 0,
+          totalParadas: 0,
+          totalPontos: 0,
+
+          expectedStops: {
+            value: 0,
+            totalKm: scheme.distancia_total_km,
+            ruleKm: 495,
+          },
+
+          totalTravelMinutes: 0,
+          totalStopMinutes: 0,
+          totalDurationMinutes: 0,
+          averageSpeedKmH: null,
+
+          countsByType: {},
+          longSegmentsCount: 0,
+          rulesStatus: {
+            status: "OK",
+            message: "Resumo não disponível para este esquema",
+          },
+        },
+      });
+      continue;
+    }
+
+    result.push({ scheme, summary });
+  }
+
+  return result;
 }
 
 export async function getSchemeById(
@@ -243,16 +298,23 @@ export async function getSchemeSummary(
       schemeNome: (scheme as any).nome ?? "",
 
       totalKm: 0,
+
+      // 🔹 com zero pontos:
       totalStops: 0,
+      totalParadas: 0,
+      totalPontos: 0,
+
       expectedStops: {
         value: 0,
         totalKm: 0,
         ruleKm: RULE_SUPPORT_KM,
       },
+
       totalTravelMinutes: 0,
       totalStopMinutes: 0,
       totalDurationMinutes: 0,
       averageSpeedKmH: null,
+
       countsByType: {},
       longSegmentsCount: 0,
       rulesStatus: {
@@ -292,10 +354,13 @@ export async function getSchemeSummary(
     countsByType[p.tipo] = (countsByType[p.tipo] ?? 0) + 1;
   }
 
-  const totalStops =
-    (countsByType["PD"] ?? 0) +
-    (countsByType["PA"] ?? 0) +
-    (countsByType["PE"] ?? 0); // se quiser contar embarque também
+  // 🔹 Nova regra:
+  // - totalStops = TUDO (todas as linhas de scheme_points)
+  // - totalParadas = totalStops
+  // - totalPontos  = totalStops - PD
+  const totalStops = schemePoints.length;
+  const totalParadas = totalStops;
+  const totalPontos = totalStops - (countsByType["PD"] ?? 0);
 
   // 5) Paradas esperadas pela regra de 495 km (ponto de apoio)
   const expectedStopsValue =
@@ -328,12 +393,18 @@ export async function getSchemeSummary(
     schemeNome: (scheme as any).nome ?? "",
 
     totalKm,
+
+    // 🔹 Valores já alinhados com o front
     totalStops,
+    totalParadas,
+    totalPontos,
+
     expectedStops: {
       value: expectedStopsValue,
       totalKm,
       ruleKm: RULE_SUPPORT_KM,
     },
+
     totalTravelMinutes,
     totalStopMinutes,
     totalDurationMinutes,

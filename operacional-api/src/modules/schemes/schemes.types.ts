@@ -49,15 +49,27 @@ export interface UpdateSchemeInput {
   ativo?: boolean;
 }
 
-// src/modules/schemes/schemes.types.ts
+export interface SchemeWithSummary {
+  scheme: SchemeWithLocations;
+  summary: SchemeSummary;
+}
 
 export interface SchemeSummary {
   schemeId: string;
   schemeCodigo: string;
   schemeNome: string;
 
+  // Distância total do esquema
   totalKm: number;
+
+  // TOTAL de registros na tabela scheme_points (PE, PD, PA, AP, etc)
   totalStops: number;
+
+  // 🆕 Regras de negócio simplificadas:
+  // - Paradas = totalStops
+  // - Pontos  = totalStops - PD
+  totalParadas: number; // = totalStops
+  totalPontos: number; // = totalStops - (countsByType["PD"] ?? 0)
 
   // Paradas esperadas pela regra de 495 km (ponto de apoio)
   expectedStops: {
@@ -66,14 +78,19 @@ export interface SchemeSummary {
     ruleKm: number;
   };
 
-  totalTravelMinutes: number; // tempo de deslocamento
+  // Tempos (minutos)
+  totalTravelMinutes: number; // tempo rodando
   totalStopMinutes: number; // tempo parado
-  totalDurationMinutes: number; // total (deslocamento + paradas)
+  totalDurationMinutes: number; // total (parado + rodando)
   averageSpeedKmH: number | null;
 
+  // Quantidade por tipo (PE, PD, PA, AP, etc)
   countsByType: Record<string, number>;
 
-  longSegmentsCount: number; // trechos > 200km
+  // Quantidade de trechos > 200 km
+  longSegmentsCount: number;
+
+  // Status geral das regras do esquema
   rulesStatus: {
     status: "OK" | "WARNING" | "ERROR";
     message: string;

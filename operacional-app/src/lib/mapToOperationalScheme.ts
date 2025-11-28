@@ -3,6 +3,7 @@ import type {
   OperationalScheme,
   RoutePoint,
   InitialPoint,
+  SchemeSummary,
 } from "@/types/scheme";
 
 import { timeStringToMinutes, minutesToTime } from "./timeUtils";
@@ -10,7 +11,7 @@ import { timeStringToMinutes, minutesToTime } from "./timeUtils";
 export function mapToOperationalScheme(
   scheme: any,
   points: any[] = [],
-  summary?: any
+  summary?: SchemeSummary
 ): OperationalScheme {
   if (!scheme) {
     throw new Error("mapToOperationalScheme: esquema inválido");
@@ -122,6 +123,9 @@ export function mapToOperationalScheme(
       ? Number((totalKm / (totalTravelMinutes / 60)).toFixed(1))
       : 0);
 
+  const totalParadas = summary?.totalParadas ?? totalStops;
+  const totalPontos = summary?.totalPontos ?? totalStops;
+
   return {
     id: scheme.id,
 
@@ -142,6 +146,9 @@ export function mapToOperationalScheme(
     totalKm,
     totalStops,
     totalExpectedStops,
+
+    totalParadas,
+    totalPontos,
 
     totalTravelMinutes,
     totalStopMinutes,
