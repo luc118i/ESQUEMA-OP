@@ -11,14 +11,6 @@ import {
 
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
 import { Button } from "@/components/ui/button";
 
 import { ANTTAlert } from "@/components/scheme/ANTTAlert";
@@ -139,23 +131,21 @@ export function RoutePointCard({
               <label className="text-slate-600 text-xs mb-1.5 block">
                 Temp. Local
               </label>
-              <Select
+              <select
                 value={String(point.stopTimeMin)}
-                onValueChange={(value: string) =>
-                  onUpdate(String(point.id), { stopTimeMin: Number(value) })
+                onChange={(e) =>
+                  onUpdate(String(point.id), {
+                    stopTimeMin: Number(e.target.value),
+                  })
                 }
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {localTimeOptions.map((option) => (
-                    <SelectItem key={option.value} value={String(option.value)}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {localTimeOptions.map((option) => (
+                  <option key={option.value} value={String(option.value)}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Hr. Saída */}
@@ -205,28 +195,26 @@ export function RoutePointCard({
               <label className="text-slate-600 text-xs mb-1.5 block">
                 Tipo
               </label>
-              <Select
+              <select
                 value={point.type}
-                onValueChange={(value: RoutePoint["type"]) =>
-                  onUpdate(String(point.id), { type: value })
+                onChange={(e) =>
+                  onUpdate(String(point.id), {
+                    type: e.target.value as RoutePoint["type"],
+                  })
                 }
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {pointTypes.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                {pointTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* (Opcional) Justificativa – se você quiser manter, adicione no tipo depois */}
-          {/* 
+          {/* (Opcional) Justificativa – se for usar depois, é só descomentar e ajustar o tipo em RoutePoint */}
+          {/*
           <div className="mb-4">
             <label className="text-slate-600 text-xs mb-1.5 block">
               Justificativa Operacional

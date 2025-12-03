@@ -11,24 +11,23 @@ interface SchemeCardProps {
 }
 
 export function SchemeCard({ scheme, onClick }: SchemeCardProps) {
-  // 👉 km: primeiro tenta usar o resumo (totalKm), se não tiver,
-  // cai para o acumulado do último ponto
+  // Tenta usar o totalKm resumido; se não tiver, usa a distância acumulada do último ponto
   const lastPoint = scheme.routePoints[scheme.routePoints.length - 1] ?? null;
 
   const totalKm =
     (typeof scheme.totalKm === "number" && scheme.totalKm > 0
       ? scheme.totalKm
-      : lastPoint?.accumulatedDistance) ?? 0;
+      : lastPoint?.cumulativeDistanceKm) ?? 0;
 
-  // 👉 paradas: se vier do resumo (totalStops), usa. Senão, conta nos pontos
+  // Paradas: se vier de totalStops, usa; senão, conta nos pontos (PP e PA)
   const stopsFromPoints = scheme.routePoints.filter(
-    (p) => p.pointType === "PP" || p.pointType === "PA"
+    (p) => p.type === "PP" || p.type === "PA"
   ).length;
 
   const totalStops =
     typeof scheme.totalStops === "number" ? scheme.totalStops : stopsFromPoints;
 
-  // quantidade de pontos cadastrados
+  // Quantidade de pontos cadastrados
   const totalPoints = scheme.routePoints.length;
 
   return (

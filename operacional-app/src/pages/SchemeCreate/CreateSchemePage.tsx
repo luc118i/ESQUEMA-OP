@@ -4,13 +4,6 @@ import { ArrowLeft, Plus, Save, Map, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
 import { RoutePointCard } from "@/components/scheme/RoutePointCard";
@@ -18,28 +11,32 @@ import { AddPointModal } from "@/components/scheme/AddPointModal";
 import { RouteSummary } from "@/components/scheme/RouteSummary";
 
 import type { RoutePoint } from "@/types/scheme";
+import { createSchemeHandlers, type Line } from "./createSchemeHandlers";
+import { InitialRoutePointCard } from "@/components/scheme/InitialRoutePointCard";
 
 interface CreateSchemePageProps {
   onBack: () => void;
 }
 
-import { createSchemeHandlers } from "./createSchemeHandlers";
-
 type Direction = "ida" | "volta";
+
+type ModalMode = "add" | "editInitial" | null;
 
 export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
   const [lineCode, setLineCode] = useState("");
-  const [selectedLine, setSelectedLine] = useState<any>(null);
+  const [selectedLine, setSelectedLine] = useState<Line | null>(null);
   const [direction, setDirection] = useState<Direction | "">("");
   const [tripTime, setTripTime] = useState("");
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
 
   const {
     handleLineCodeChange,
     handleAddPoint,
     handleUpdatePoint,
     handleDeletePoint,
+    handleSetInitialPoint,
   } = createSchemeHandlers({
     routePoints,
     setRoutePoints,
@@ -49,6 +46,37 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
     setLineCode,
     setIsModalOpen,
   });
+
+  // ✅ regras de exibição
+  const canShowLineDetails = !!selectedLine && !!direction && !!tripTime;
+  const canShowPointsSection = !!selectedLine && !!direction && !!tripTime;
+  const canSaveScheme =
+    !!selectedLine && !!direction && !!tripTime && routePoints.length > 0;
+
+  // ✅ textos derivados da linha
+  const lineDisplayName =
+    selectedLine?.municipioOrigem && selectedLine?.municipioDestino
+      ? `${selectedLine.municipioOrigem} - ${selectedLine.municipioDestino}`
+      : "";
+
+  const origemDestinoText = selectedLine
+    ? `${selectedLine.ufOrigem} ${selectedLine.municipioOrigem} → ${selectedLine.ufDestino} ${selectedLine.municipioDestino}`
+    : "";
+
+  // ✅ ponto inicial / final conforme sentido
+  const initialCity =
+    direction === "ida"
+      ? selectedLine?.municipioOrigem
+      : selectedLine?.municipioDestino;
+  const initialState =
+    direction === "ida" ? selectedLine?.ufOrigem : selectedLine?.ufDestino;
+
+  const finalCity =
+    direction === "ida"
+      ? selectedLine?.municipioDestino
+      : selectedLine?.municipioOrigem;
+  const finalState =
+    direction === "ida" ? selectedLine?.ufDestino : selectedLine?.ufOrigem;
 
   return (
     <div className="min-h-screen">
@@ -95,7 +123,7 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                 id="direction"
                 className="border-input flex h-9 w-full items-center justify-between gap-2 rounded-md border bg-input-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
                 value={direction}
-                onChange={(e) => setDirection(e.target.value as Direction)}
+                onChange={(e) => setDirection(e.target.value as Direction | "")}
               >
                 <option value="">Selecione...</option>
                 <option value="ida">Ida</option>
@@ -116,36 +144,118 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
           </div>
 
           {/* Informações Carregadas da Linha */}
-          {selectedLine && (
-            <div className="mt-6 pt-6 border-t border-slate-200">
+          {canShowLineDetails && selectedLine && (
+            <div className="mt-6 pt-6 border-t border-slate-200 space-y-4">
+              {/* Nome da linha / Origem-Destino */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-slate-600">Nome da Linha</Label>
-                  <p className="text-slate-900 mt-1">{selectedLine.name}</p>
+                  <p className="text-slate-900 mt-1">
+                    {lineDisplayName || "-"}
+                  </p>
                 </div>
                 <div>
                   <Label className="text-slate-600">Origem → Destino</Label>
-                  <p className="text-slate-900 mt-1">
-                    {selectedLine.origin} → {selectedLine.destination}
+                  <p className="text-slate-900 mt-1 transition-opacity duration-300">
+                    <span
+                      key={direction}
+                      className="inline-block opacity-100 transition-opacity duration-300"
+                    >
+                      {selectedLine
+                        ? `${selectedLine.ufOrigem} ${
+                            selectedLine.municipioOrigem
+                          } ${direction === "ida" ? "→" : "←"} ${
+                            selectedLine.ufDestino
+                          } ${selectedLine.municipioDestino}`
+                        : "-"}
+                    </span>
                   </p>
                 </div>
               </div>
 
-              {/* Ponto Inicial */}
+              {/* Empresa / Situação */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-slate-600">Empresa</Label>
+                  <p className="text-slate-900 mt-1">
+                    {selectedLine.nomeEmpresa}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-slate-600">Situação</Label>
+                  <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold">
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        selectedLine.situacao === "Ativa"
+                          ? "bg-emerald-500"
+                          : "bg-rose-500"
+                      }`}
+                    />
+                    <span className="text-slate-900">
+                      {selectedLine.situacao}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Ponto Inicial + Ponto Final (apenas display por enquanto) */}
               <div className="mt-4">
-                <Label className="text-slate-600">Ponto Inicial</Label>
-                <div className="mt-2 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-blue-900">
-                        {selectedLine.initialPoint.name}
-                      </p>
-                      <p className="text-blue-700 text-sm mt-1">
-                        {selectedLine.initialPoint.city} /{" "}
-                        {selectedLine.initialPoint.state}
-                      </p>
+                <Label className="text-slate-600">Pontos principais</Label>
+
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Ponto inicial */}
+                  <button
+                    type="button"
+                    className="text-left p-4 bg-blue-50 border border-blue-200 rounded-lg hover:border-blue-300 transition flex flex-col justify-between"
+                    onClick={() => {
+                      setModalMode("editInitial"); // ← define o modo como edição de ponto inicial
+                      setIsModalOpen(true); // ← abre o modal
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold uppercase text-blue-700">
+                        Ponto inicial
+                      </span>
+                      <span
+                        className="
+                                    text-xs text-blue-700 underline 
+                                    cursor-pointer 
+                                    hover:text-blue-900 
+                                    transition-colors
+                                  "
+                      >
+                        Editar
+                      </span>
                     </div>
-                    <div className="text-blue-600 text-sm">Ponto de origem</div>
+
+                    <p className="text-blue-900 font-medium">
+                      {initialCity && initialState
+                        ? `${initialCity}`
+                        : "Definir ponto inicial"}
+                    </p>
+
+                    {initialCity && initialState && (
+                      <p className="text-blue-700 text-sm mt-1">
+                        {initialCity} / {initialState}
+                      </p>
+                    )}
+                  </button>
+
+                  {/* Ponto final */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col justify-between">
+                    <div className="mb-1">
+                      <span className="text-xs font-semibold uppercase text-slate-500">
+                        Ponto final
+                      </span>
+                    </div>
+                    <p className="text-slate-900 font-medium">
+                      {finalCity && finalState ? `${finalCity}` : "Ponto final"}
+                    </p>
+                    {finalCity && finalState && (
+                      <p className="text-slate-700 text-sm mt-1">
+                        {finalCity} / {finalState}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -154,12 +264,15 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
         </Card>
 
         {/* Lista de Pontos da Rota */}
-        {selectedLine && tripTime && (
+        {canShowPointsSection && (
           <Card className="p-6 bg-white shadow-sm border-slate-200">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-slate-900">Pontos da Rota</h2>
               <Button
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => {
+                  setModalMode("add");
+                  setIsModalOpen(true);
+                }}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -178,15 +291,25 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
               </div>
             ) : (
               <div className="space-y-4">
-                {routePoints.map((point, index) => (
-                  <RoutePointCard
-                    key={point.id}
-                    point={point}
-                    index={index}
-                    onUpdate={handleUpdatePoint}
-                    onDelete={handleDeletePoint}
-                  />
-                ))}
+                {routePoints.map((point, index) =>
+                  index === 0 ? (
+                    <InitialRoutePointCard
+                      key={point.id}
+                      point={point}
+                      index={index}
+                      onUpdate={handleUpdatePoint}
+                      onDelete={handleDeletePoint} // se quiser permitir
+                    />
+                  ) : (
+                    <RoutePointCard
+                      key={point.id}
+                      point={point}
+                      index={index}
+                      onUpdate={handleUpdatePoint}
+                      onDelete={handleDeletePoint}
+                    />
+                  )
+                )}
               </div>
             )}
           </Card>
@@ -198,7 +321,7 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
         )}
 
         {/* Ações Finais */}
-        {selectedLine && routePoints.length > 0 && (
+        {canSaveScheme && (
           <Card className="p-6 bg-white shadow-sm border-slate-200">
             <div className="flex flex-wrap gap-3 justify-end">
               <Button
@@ -216,7 +339,10 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                 <Map className="w-4 h-4 mr-2" />
                 Visualizar no Mapa
               </Button>
-              <Button className="bg-green-600 hover:bg-green-700">
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                disabled={!canSaveScheme}
+              >
                 <Save className="w-4 h-4 mr-2" />
                 Salvar Esquema
               </Button>
@@ -228,50 +354,42 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
       {/* Modal de Adicionar Ponto */}
       <AddPointModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onAdd={handleAddPoint}
-        lastPoint={
-          routePoints.length > 0 ? routePoints[routePoints.length - 1] : null
-        }
-        initialPoint={selectedLine?.initialPoint}
+        onClose={() => {
+          setIsModalOpen(false);
+          setModalMode(null);
+        }}
+        onAdd={(point) => {
+          // fluxo normal: adicionar ponto à rota
+          handleAddPoint(point);
+          setIsModalOpen(false);
+          setModalMode(null);
+        }}
+        onSetInitial={(point) => {
+          // 1) Verifica se já existe um RoutePoint com esse local
+          const existing = routePoints.find(
+            (p) => p.id === point.id || p.location.id === point.id
+          );
+
+          if (existing) {
+            // se já existe na rota, só recalcula horários com base nele
+            handleSetInitialPoint(existing.id);
+          } else {
+            // se NÃO existe na rota, criamos um novo RoutePoint
+            const routePointId = String(point.id ?? crypto.randomUUID());
+
+            // adiciona o ponto à rota (handleAddPoint sabe montar o RoutePoint a partir do LocationOption)
+            handleAddPoint({ ...point, id: routePointId });
+
+            // e já define esse ponto (recém-adicionado) como inicial:
+            handleSetInitialPoint(routePointId);
+          }
+
+          setIsModalOpen(false);
+          setModalMode(null);
+        }}
+        canSetInitial={true}
+        initialPoint={routePoints.length > 0 ? routePoints[0] : null}
       />
     </div>
   );
-}
-
-// Função para calcular distância entre dois pontos (Haversine)
-function calculateDistance(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 6371; // Raio da Terra em km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c * 10) / 10; // Arredondar para 1 casa decimal
-}
-
-function toRad(degrees: number): number {
-  return degrees * (Math.PI / 180);
-}
-
-// Função para adicionar minutos a um horário (formato HH:MM)
-function addMinutesToTime(time: string, minutes: number): string {
-  if (!time) return "";
-  const [hours, mins] = time.split(":").map(Number);
-  const totalMinutes = hours * 60 + mins + minutes;
-  const newHours = Math.floor(totalMinutes / 60) % 24;
-  const newMins = totalMinutes % 60;
-  return `${String(newHours).padStart(2, "0")}:${String(newMins).padStart(
-    2,
-    "0"
-  )}`;
 }

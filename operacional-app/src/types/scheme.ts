@@ -1,13 +1,18 @@
 export interface RoutePoint {
   id: string;
   order: number;
-  type: "PE" | "PP" | string;
+  type: "PE" | "PP" | "PD" | "PA" | "TMJ" | "PL" | string;
+
   distanceKm: number;
   cumulativeDistanceKm: number;
+
   driveTimeMin: number;
   stopTimeMin: number;
-  arrivalTime: string; // "HH:MM" (horário)
+
+  arrivalTime: string; // "HH:MM"
   departureTime: string; // "HH:MM"
+
+  // Agora é OBRIGATÓRIO
   location: {
     id: string;
     name: string;
@@ -17,10 +22,18 @@ export interface RoutePoint {
     kind: string;
     lat: number;
     lng: number;
-  } | null;
+  };
 
   avgSpeed?: number;
   justification?: string;
+
+  // 👇 NOVO: funções ANTT (podem ser várias ao mesmo tempo)
+  isRestStop?: boolean; // conta como parada de descanso (330 km)
+  isSupportPoint?: boolean; // conta como ponto de apoio (402/495 km)
+  isDriverChange?: boolean; // conta como TMJ (660 km)
+  isBoardingPoint?: boolean; // embarque
+  isDropoffPoint?: boolean; // desembarque
+  isFreeStop?: boolean; // parada livre / comercial
 }
 
 export interface InitialPoint {

@@ -163,81 +163,71 @@ function generateANTTAlerts(
   avgSpeed: number
 ): ANTTAlertData[] {
   const alerts: ANTTAlertData[] = [];
-  const acc = point.cumulativeDistanceKm ?? 0;
+  const accumulated = point.cumulativeDistanceKm ?? 0;
 
-  // regras ANTT...
-  // (mantive exatamente seu comportamento original)
+  // Helper genérico: aplica a regra da margem de 8%
+  // - acima do limite  -> ERROR
+  // - mais de 8% abaixo do limite -> WARNING (antecipado)
+  // - dentro da faixa [92%..100%] -> sem alerta
+  const distanceAlertWithMargin = (
+    label: string,
+    limitKm: number,
+    distanceKm: number
+  ) => {
+    if (!Number.isFinite(distanceKm) || distanceKm <= 0) return;
 
-  if (index === 0 && point.type === "PP") {
-    if (acc >= 262 && acc <= 330)
-      alerts.push({
-        type: "success",
-        message: `Primeiro ponto de parada (${acc.toFixed(1)} / 330 km)`,
-      });
-    else if (acc > 330)
+    const upper = limitKm;
+    const lower = limitKm * 0.92; // 8% abaixo do limite
+
+    if (distanceKm > upper) {
       alerts.push({
         type: "error",
-        message: `Distância acima do permitido (${acc.toFixed(1)} / 330 km)`,
-      });
-    else
-      alerts.push({
-        type: "warning",
-        message: `Parada antecipada (${acc.toFixed(1)} / 262 km)`,
-      });
-  }
-
-  if (point.type === "PA") {
-    if (acc >= 402 && acc <= 495)
-      alerts.push({
-        type: "success",
-        message: `Ponto de apoio conforme (${acc.toFixed(1)} / 495 km)`,
-      });
-    else if (acc < 402)
-      alerts.push({
-        type: "warning",
-        message: `Ponto de apoio antecipado (${acc.toFixed(1)} / 402 km)`,
-      });
-    else
-      alerts.push({
-        type: "error",
-        message: `Ponto de apoio além do limite (${acc.toFixed(1)} / 495 km)`,
-      });
-  }
-
-  if (point.type === "TMJ") {
-    if (acc <= 660)
-      alerts.push({
-        type: "success",
-        message: `Troca de motorista em jornada (${acc.toFixed(1)} / 660 km)`,
-      });
-    else
-      alerts.push({
-        type: "error",
-        message: `Troca de motorista além do limite (${acc.toFixed(
+        message: `${label} além do limite (${distanceKm.toFixed(
           1
-        )} / 660 km)`,
+        )} / ${upper} km)`,
       });
+    } else if (distanceKm < lower) {
+      alerts.push({
+        type: "warning",
+        message: `${label} antecipado (${distanceKm.toFixed(1)} / ${upper} km)`,
+      });
+    }
+  };
+
+  // 🔵 1) Primeira parada de descanso – 330 km
+  // (considerando que o índice 0 é o primeiro ponto "depois" da origem)
+  if (index === 0 && point.type === "PP") {
+    distanceAlertWithMargin("Primeiro ponto de parada", 330, accumulated);
   }
 
-  if (avgSpeed > 90)
+  // 🔵 2) Ponto de apoio – limite 495 km
+  if (point.type === "PA") {
+    distanceAlertWithMargin("Ponto de apoio", 495, accumulated);
+  }
+
+  // 🔵 3) Troca de motorista em jornada – limite 660 km
+  if (point.type === "TMJ") {
+    distanceAlertWithMargin("Troca de motorista", 660, accumulated);
+  }
+
+  // 🔵 4) Velocidade média alta
+  if (avgSpeed > 90) {
     alerts.push({
       type: "warning",
       message: `Velocidade acima da recomendada (${avgSpeed} km/h)`,
     });
+  }
 
-  if ((point.type === "PP" || point.type === "PA") && point.stopTimeMin < 20)
+  // 🔵 5) Tempo de parada muito curto em PP/PA
+  if ((point.type === "PP" || point.type === "PA") && point.stopTimeMin < 20) {
     alerts.push({
       type: "warning",
-      message: `Tempo de parada pode ser insuficiente (${formatMinutesToHours(
+      message: `O tempo de parada pode ser insuficiente (${formatMinutesToHours(
         point.stopTimeMin
       )})`,
     });
+  }
 
-  if (point.distanceKm > 200)
-    alerts.push({
-      type: "warning",
-      message: `Trecho longo sem parada (${point.distanceKm.toFixed(1)} km)`,
-    });
-
+  // 👇 Nenhum "success" aqui: o card só mostra algo quando há problema
   return alerts;
 }

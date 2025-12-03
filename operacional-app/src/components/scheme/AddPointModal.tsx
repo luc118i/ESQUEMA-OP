@@ -1,145 +1,23 @@
-import { useState } from "react";
 import { Search, MapPin, X } from "lucide-react";
-
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
 import type { RoutePoint } from "@/types/scheme";
+import {
+  useLocationSearch,
+  type LocationOption,
+} from "@/hooks/useLocationSearch";
 
 interface AddPointModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (point: any) => void;
-  lastPoint: RoutePoint | null;
-  initialPoint: any;
+  onSetInitial: (point: any) => void;
+  canSetInitial: boolean;
+  initialPoint: RoutePoint | null;
 }
-
-// Mock data de locais cadastrados
-const mockLocations = [
-  {
-    id: 1,
-    name: "Terminal Rodoviário",
-    city: "Uberaba",
-    state: "MG",
-    type: "Terminal",
-    lat: -19.7479,
-    lng: -47.9319,
-  },
-  {
-    id: 2,
-    name: "Posto Graal",
-    city: "Cristalina",
-    state: "GO",
-    type: "Posto de Combustível",
-    lat: -16.7681,
-    lng: -47.6144,
-  },
-  {
-    id: 3,
-    name: "Terminal Tietê",
-    city: "São Paulo",
-    state: "SP",
-    type: "Terminal",
-    lat: -23.5151,
-    lng: -46.6264,
-  },
-  {
-    id: 4,
-    name: "Posto Shell BR-153",
-    city: "Anápolis",
-    state: "GO",
-    type: "Posto de Combustível",
-    lat: -16.3281,
-    lng: -48.9534,
-  },
-  {
-    id: 5,
-    name: "Restaurante Estrela",
-    city: "Uberlândia",
-    state: "MG",
-    type: "Restaurante",
-    lat: -18.9186,
-    lng: -48.2772,
-  },
-  {
-    id: 6,
-    name: "Terminal Central",
-    city: "Goiânia",
-    state: "GO",
-    type: "Terminal",
-    lat: -16.6869,
-    lng: -49.2648,
-  },
-  {
-    id: 7,
-    name: "Posto Ipiranga KM 745",
-    city: "Campinas",
-    state: "SP",
-    type: "Posto de Combustível",
-    lat: -22.9099,
-    lng: -47.0626,
-  },
-  {
-    id: 8,
-    name: "Parador Via Oeste",
-    city: "Ribeirão Preto",
-    state: "SP",
-    type: "Restaurante",
-    lat: -21.1704,
-    lng: -47.8103,
-  },
-  {
-    id: 9,
-    name: "Terminal Rodoviário",
-    city: "Catalão",
-    state: "GO",
-    type: "Terminal",
-    lat: -18.1658,
-    lng: -47.9464,
-  },
-  {
-    id: 10,
-    name: "Posto BR Mania",
-    city: "Araguari",
-    state: "MG",
-    type: "Posto de Combustível",
-    lat: -18.6473,
-    lng: -48.1867,
-  },
-  {
-    id: 11,
-    name: "Restaurante Sabor Mineiro",
-    city: "Ituiutaba",
-    state: "MG",
-    type: "Restaurante",
-    lat: -18.9688,
-    lng: -49.4646,
-  },
-  {
-    id: 12,
-    name: "Garagem Central",
-    city: "Brasília",
-    state: "DF",
-    type: "Garagem",
-    lat: -15.7942,
-    lng: -47.8822,
-  },
-];
 
 const pointTypes = [
   { value: "PE", label: "PE - Ponto de Embarque" },
@@ -148,6 +26,51 @@ const pointTypes = [
   { value: "PA", label: "PA - Ponto de Apoio" },
   { value: "TMJ", label: "TMJ - Troca de Motorista em Jornada" },
   { value: "PL", label: "PL - Ponto Livre" },
+];
+
+type ANTTFunctionKey =
+  | "DESCANSO"
+  | "APOIO"
+  | "TROCA_MOTORISTA"
+  | "EMBARQUE"
+  | "DESEMBARQUE"
+  | "PARADA_LIVRE";
+
+const ANTT_FUNCTIONS: {
+  id: ANTTFunctionKey;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "DESCANSO",
+    label: "Parada obrigatória (descanso)",
+    description: "Conta como parada obrigatória em trechos longos.",
+  },
+  {
+    id: "APOIO",
+    label: "Ponto de apoio",
+    description: "Local com estrutura de apoio (banheiro, alimentação etc.).",
+  },
+  {
+    id: "TROCA_MOTORISTA",
+    label: "Troca de motorista",
+    description: "Utilizado para registrar a troca de motorista na jornada.",
+  },
+  {
+    id: "EMBARQUE",
+    label: "Embarque",
+    description: "Ponto onde os passageiros embarcam.",
+  },
+  {
+    id: "DESEMBARQUE",
+    label: "Desembarque",
+    description: "Ponto onde os passageiros desembarcam.",
+  },
+  {
+    id: "PARADA_LIVRE",
+    label: "Parada livre / comercial",
+    description: "Parada não obrigatória, usada para fins operacionais.",
+  },
 ];
 
 const localTimeOptions = [
@@ -166,65 +89,216 @@ export function AddPointModal({
   isOpen,
   onClose,
   onAdd,
-  lastPoint,
+  onSetInitial,
+  canSetInitial,
   initialPoint,
 }: AddPointModalProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState<any>(null);
+  const {
+    searchTerm,
+    setSearchTerm,
+    locations,
+    selectedLocation,
+    selectLocation,
+    clearSelection,
+    clearResults,
+    isLoading,
+    error,
+  } = useLocationSearch("");
+
   const [pointType, setPointType] = useState("PP");
   const [localTime, setLocalTime] = useState(20);
   const [avgSpeed, setAvgSpeed] = useState(80);
   const [justification, setJustification] = useState("");
 
-  const filteredLocations = mockLocations.filter(
-    (location) =>
-      location.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      location.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      location.state.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [isRestStop, setIsRestStop] = useState(false);
+  const [isSupportPoint, setIsSupportPoint] = useState(false);
+  const [isDriverChange, setIsDriverChange] = useState(false);
+  const [isBoardingPoint, setIsBoardingPoint] = useState(false);
+  const [isDropoffPoint, setIsDropoffPoint] = useState(false);
+  const [isFreeStop, setIsFreeStop] = useState(false);
 
-  const handleLocationSelect = (location: any) => {
-    setSelectedLocation(location);
+  const [anttFunctions, setAnttFunctions] = useState<ANTTFunctionKey[]>([]);
+
+  // 🔒 Bloqueia o scroll do body enquanto o modal está aberto
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  // Sugestões padrão de funções ANTT conforme o tipo principal
+  useEffect(() => {
+    // zera tudo primeiro
+    setIsRestStop(false);
+    setIsSupportPoint(false);
+    setIsDriverChange(false);
+    setIsBoardingPoint(false);
+    setIsDropoffPoint(false);
+    setIsFreeStop(false);
+
+    const defaults: ANTTFunctionKey[] = [];
+
+    switch (pointType) {
+      case "PP":
+        // parada clássica de descanso
+        setIsRestStop(true);
+        defaults.push("DESCANSO");
+        break;
+      case "PA":
+        // geralmente é apoio + descanso
+        setIsRestStop(true);
+        setIsSupportPoint(true);
+        defaults.push("DESCANSO", "APOIO");
+        break;
+      case "TMJ":
+        // troca de motorista quase sempre é junto de uma parada
+        setIsRestStop(true);
+        setIsDriverChange(true);
+        defaults.push("DESCANSO", "TROCA_MOTORISTA");
+        break;
+      case "PE":
+        setIsBoardingPoint(true);
+        defaults.push("EMBARQUE");
+        break;
+      case "PD":
+        setIsDropoffPoint(true);
+        defaults.push("DESEMBARQUE");
+        break;
+      case "PL":
+        setIsFreeStop(true);
+        defaults.push("PARADA_LIVRE");
+        break;
+      default:
+        break;
+    }
+
+    setAnttFunctions(defaults);
+  }, [pointType]);
+
+  const resetForm = () => {
+    setSearchTerm("");
+    clearResults();
+    setPointType("PP");
+    setLocalTime(20);
+    setAvgSpeed(80);
+    setJustification("");
+    setAnttFunctions([]);
+
+    setIsRestStop(false);
+    setIsSupportPoint(false);
+    setIsDriverChange(false);
+    setIsBoardingPoint(false);
+    setIsDropoffPoint(false);
+    setIsFreeStop(false);
   };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  const buildPayloadFromLocation = (location: LocationOption) => ({
+    // Identificação principal
+    id: crypto.randomUUID(), // id temporário (handleAddPoint pode substituir se quiser)
+
+    // Local estruturado no padrão RoutePoint / Location interno
+    location: {
+      id: String(location.id),
+      name: String(location.name ?? ""),
+      city: String(location.city ?? ""),
+      state: String(location.state ?? ""),
+      shortName: String(location.sigla ?? location.name ?? ""),
+      kind: "OUTRO", // LocationOption não tem kind, então fixo aqui
+      lat: Number(location.lat ?? 0),
+      lng: Number(location.lng ?? 0),
+    },
+
+    // Campos operacionais vindos do modal
+    type: pointType, // tipo de ponto (PE/PD/PP/...)
+    stopTimeMin: localTime, // tempo no local em minutos
+    avgSpeed: Number(avgSpeed), // override de velocidade opcional
+    justification,
+
+    // Flags ANTT (booleans)
+    isRestStop,
+    isSupportPoint,
+    isDriverChange,
+    isBoardingPoint,
+    isDropoffPoint,
+    isFreeStop,
+
+    // Funções ANTT múltiplas
+    anttFunctions: [...anttFunctions],
+  });
 
   const handleAdd = () => {
     if (!selectedLocation) return;
 
-    onAdd({
-      ...selectedLocation,
-      pointType,
-      localTime,
-      avgSpeed,
-      justification,
-    });
+    const payload = buildPayloadFromLocation(selectedLocation);
+    console.log("POINT ENVIADO PELO MODAL:", payload);
 
-    // Reset form
-    setSearchTerm("");
-    setSelectedLocation(null);
-    setPointType("PP");
-    setLocalTime(20);
-    setAvgSpeed(80);
-    setJustification("");
+    onAdd(payload);
+    handleClose();
   };
 
-  const handleClose = () => {
-    setSearchTerm("");
-    setSelectedLocation(null);
-    setPointType("PP");
-    setLocalTime(20);
-    setAvgSpeed(80);
-    setJustification("");
-    onClose();
+  const handleSetInitialLocal = () => {
+    if (!selectedLocation) return;
+
+    const payload = buildPayloadFromLocation(selectedLocation);
+    console.log("POINT INICIAL ENVIADO PELO MODAL:", payload);
+
+    onSetInitial(payload);
+    handleClose();
   };
+
+  const toggleAnttFunction = (id: ANTTFunctionKey) => {
+    setAnttFunctions((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
+    );
+  };
+
+  // 👇 Quando não estiver aberto, nem renderiza o modal
+  if (!isOpen) {
+    return null;
+  }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Adicionar Ponto à Rota</DialogTitle>
-        </DialogHeader>
+    // Container com overlay + centralização
+    <div
+      className={`
+        fixed inset-0 z-50 flex items-center justify-center
+        bg-black/40 backdrop-blur-sm
+        transition-opacity duration-150
+        opacity-100 pointer-events-auto
+      `}
+      onClick={handleClose} // clique fora fecha
+    >
+      {/* Conteúdo do modal */}
+      <div
+        className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-lg"
+        onClick={(e) => e.stopPropagation()} // impede fechar ao clicar dentro
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Adicionar Ponto à Rota
+          </h2>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="rounded-full p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
+          >
+            <X className="w-4 h-4" />
+            <span className="sr-only">Fechar</span>
+          </button>
+        </div>
 
-        <div className="space-y-6 mt-4">
+        <div className="space-y-6 mt-2">
           {/* Busca de Local */}
           <div className="space-y-3">
             <Label>Buscar Local Cadastrado</Label>
@@ -238,15 +312,61 @@ export function AddPointModal({
               />
             </div>
 
+            {/* Ponto inicial da rota */}
+            <div className="mt-2">
+              <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide mb-1">
+                Ponto inicial da rota
+              </p>
+
+              {initialPoint ? (
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div>
+                    <p className="text-sm text-slate-900">
+                      {initialPoint.location?.city} /{" "}
+                      {initialPoint.location?.state}
+                    </p>
+                    {initialPoint.location?.name && (
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        {initialPoint.location.name}
+                      </p>
+                    )}
+                    {initialPoint.type && (
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Tipo:{" "}
+                        <span className="font-medium">{initialPoint.type}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                  <p className="text-xs text-amber-900 font-medium">
+                    Nenhum ponto inicial definido
+                  </p>
+                  <p className="text-[11px] text-amber-900 mt-1">
+                    Selecione um local na lista abaixo e clique em{" "}
+                    <span className="font-semibold">"como ponto inicial"</span>{" "}
+                    para iniciar a rota.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Lista de Resultados */}
             {searchTerm && (
               <div className="border border-slate-200 rounded-lg max-h-64 overflow-y-auto">
-                {filteredLocations.length > 0 ? (
+                {isLoading ? (
+                  <div className="p-4 text-sm text-slate-500">
+                    Buscando locais...
+                  </div>
+                ) : error ? (
+                  <div className="p-4 text-sm text-red-600">{error}</div>
+                ) : locations.length > 0 ? (
                   <div className="divide-y divide-slate-100">
-                    {filteredLocations.map((location) => (
+                    {locations.map((location) => (
                       <button
                         key={location.id}
-                        onClick={() => handleLocationSelect(location)}
+                        onClick={() => selectLocation(location)}
                         className={`w-full text-left p-3 hover:bg-slate-50 transition-colors ${
                           selectedLocation?.id === location.id
                             ? "bg-blue-50"
@@ -298,7 +418,7 @@ export function AddPointModal({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setSelectedLocation(null)}
+                  onClick={clearSelection}
                   className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
                 >
                   <X className="w-4 h-4" />
@@ -331,41 +451,33 @@ export function AddPointModal({
                 {/* Tipo de Ponto */}
                 <div className="space-y-2">
                   <Label>Tipo de Ponto</Label>
-                  <Select value={pointType} onValueChange={setPointType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pointTypes.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <select
+                    value={pointType}
+                    onChange={(e) => setPointType(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {pointTypes.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Tempo no Local */}
                 <div className="space-y-2">
                   <Label>Tempo no Local</Label>
-                  <Select
+                  <select
                     value={String(localTime)}
-                    onValueChange={(v: string) => setLocalTime(Number(v))}
+                    onChange={(e) => setLocalTime(Number(e.target.value))}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {localTimeOptions.map((option) => (
-                        <SelectItem
-                          key={option.value}
-                          value={String(option.value)}
-                        >
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {localTimeOptions.map((option) => (
+                      <option key={option.value} value={String(option.value)}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Velocidade Média */}
@@ -375,9 +487,37 @@ export function AddPointModal({
                     type="number"
                     value={avgSpeed}
                     onChange={(e) => setAvgSpeed(Number(e.target.value))}
-                    min="1"
-                    max="120"
+                    min={1}
+                    max={120}
                   />
+                </div>
+
+                {/* Funções ANTT deste ponto */}
+                <div className="space-y-2">
+                  <Label>Funções ANTT deste ponto</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {ANTT_FUNCTIONS.map((fn) => (
+                      <label
+                        key={fn.id}
+                        className="flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={anttFunctions.includes(fn.id)}
+                          onChange={() => toggleAnttFunction(fn.id)}
+                        />
+                        <div>
+                          <div className="font-medium text-slate-900">
+                            {fn.label}
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            {fn.description}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -395,10 +535,24 @@ export function AddPointModal({
 
           {/* Botões de Ação */}
           <div className="flex gap-3 justify-end pt-4 border-t border-slate-200">
-            <Button variant="outline" onClick={handleClose}>
+            <Button variant="outline" type="button" onClick={handleClose}>
               Cancelar
             </Button>
+
+            {canSetInitial && (
+              <Button
+                variant="outline"
+                type="button"
+                onClick={handleSetInitialLocal}
+                disabled={!selectedLocation}
+                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                Definir como ponto inicial
+              </Button>
+            )}
+
             <Button
+              type="button"
               onClick={handleAdd}
               disabled={!selectedLocation}
               className="bg-blue-600 hover:bg-blue-700"
@@ -407,7 +561,7 @@ export function AddPointModal({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   );
 }

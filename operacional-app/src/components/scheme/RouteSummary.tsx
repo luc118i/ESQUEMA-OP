@@ -12,22 +12,35 @@ export function RouteSummary({
   routePoints,
   tripStartTime,
 }: RouteSummaryProps) {
-  // Calcular totais
+  // Totais baseados na estrutura REAL do RoutePoint:
+  // - stopTimeMin: tempo parado no ponto (min)
+  // - driveTimeMin: tempo de deslocamento (min)
+  // - cumulativeDistanceKm: distância acumulada desde o início (km)
+
   const totalStopTime = routePoints.reduce(
-    (sum, point) => sum + point.localTime,
+    (sum, point) => sum + (point.stopTimeMin ?? 0),
     0
   );
+
   const totalTravelTime = routePoints.reduce(
-    (sum, point) => sum + point.travelTime,
+    (sum, point) => sum + (point.driveTimeMin ?? 0),
     0
   );
+
   const totalTime = totalStopTime + totalTravelTime;
-  const totalDistance =
-    routePoints[routePoints.length - 1]?.accumulatedDistance || 0;
+
+  const lastPoint = routePoints[routePoints.length - 1];
+  const totalDistance = lastPoint?.cumulativeDistanceKm ?? 0;
   const totalPoints = routePoints.length;
 
   // Verificar conformidade ANTT
   const anttChecks = checkANTTCompliance(routePoints);
+
+  // Velocidade média geral (km/h)
+  const generalAvgSpeed =
+    totalTravelTime > 0
+      ? ((totalDistance / totalTravelTime) * 60).toFixed(1)
+      : "0.0";
 
   return (
     <Card className="p-6 bg-gradient-to-br from-slate-50 to-white border-slate-200 shadow-sm">
@@ -135,17 +148,12 @@ export function RouteSummary({
               Horário Previsto de Chegada
             </p>
             <p className="text-slate-900 mt-1">
-              {routePoints[routePoints.length - 1]?.arrivalTime || "--:--"}
+              {lastPoint?.arrivalTime || "--:--"}
             </p>
           </div>
           <div>
             <p className="text-slate-600 text-sm">Velocidade Média Geral</p>
-            <p className="text-slate-900 mt-1">
-              {totalTravelTime > 0
-                ? ((totalDistance / totalTravelTime) * 60).toFixed(1)
-                : "0.0"}{" "}
-              km/h
-            </p>
+            <p className="text-slate-900 mt-1">{generalAvgSpeed} km/h</p>
           </div>
         </div>
       </div>
@@ -154,14 +162,23 @@ export function RouteSummary({
 }
 
 function formatMinutesToHours(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+  const safe = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(safe / 60);
+  const mins = safe % 60;
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 }
 
 interface ANTTCheck {
   compliant: boolean;
   message: string;
+}
+
+// Helper para calcular velocidade média de um ponto (km/h)
+function getPointAvgSpeed(point: RoutePoint): number {
+  if (!point.driveTimeMin || point.driveTimeMin <= 0 || !point.distanceKm) {
+    return 0;
+  }
+  return Number((point.distanceKm / (point.driveTimeMin / 60)).toFixed(1));
 }
 
 function checkANTTCompliance(routePoints: RoutePoint[]): ANTTCheck[] {
@@ -171,10 +188,11 @@ function checkANTTCompliance(routePoints: RoutePoint[]): ANTTCheck[] {
     return [{ compliant: false, message: "Nenhum ponto adicionado à rota" }];
   }
 
-  const totalDistance =
-    routePoints[routePoints.length - 1]?.accumulatedDistance || 0;
+  const lastPoint = routePoints[routePoints.length - 1];
+  const totalDistance = lastPoint?.cumulativeDistanceKm ?? 0;
 
-  const stopPoints = routePoints.filter((p) => p.pointType === "PP");
+  // Pontos de parada (PP)
+  const stopPoints = routePoints.filter((p) => p.type === "PP");
   if (totalDistance > 262 && stopPoints.length === 0) {
     checks.push({
       compliant: false,
@@ -187,7 +205,8 @@ function checkANTTCompliance(routePoints: RoutePoint[]): ANTTCheck[] {
     });
   }
 
-  const supportPoints = routePoints.filter((p) => p.pointType === "PA");
+  // Pontos de apoio (PA)
+  const supportPoints = routePoints.filter((p) => p.type === "PA");
   if (totalDistance > 402 && supportPoints.length === 0) {
     checks.push({
       compliant: false,
@@ -200,7 +219,8 @@ function checkANTTCompliance(routePoints: RoutePoint[]): ANTTCheck[] {
     });
   }
 
-  const driverChangePoints = routePoints.filter((p) => p.pointType === "TMJ");
+  // Troca de motorista (TMJ)
+  const driverChangePoints = routePoints.filter((p) => p.type === "TMJ");
   if (totalDistance > 660 && driverChangePoints.length === 0) {
     checks.push({
       compliant: false,
@@ -214,7 +234,8 @@ function checkANTTCompliance(routePoints: RoutePoint[]): ANTTCheck[] {
     });
   }
 
-  const highSpeedPoints = routePoints.filter((p) => p.avgSpeed > 90);
+  // Velocidade média alta em algum trecho
+  const highSpeedPoints = routePoints.filter((p) => getPointAvgSpeed(p) > 90);
   if (highSpeedPoints.length > 0) {
     checks.push({
       compliant: false,
@@ -227,7 +248,10 @@ function checkANTTCompliance(routePoints: RoutePoint[]): ANTTCheck[] {
     });
   }
 
-  const longDistancePoints = routePoints.filter((p) => p.distance > 200);
+  // Trechos com distância muito longa sem parada
+  const longDistancePoints = routePoints.filter(
+    (p) => (p.distanceKm ?? 0) > 200
+  );
   if (longDistancePoints.length > 0) {
     checks.push({
       compliant: false,

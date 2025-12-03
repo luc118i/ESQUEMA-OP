@@ -2,42 +2,61 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { RoutePoint } from "@/types/scheme";
 
-// 🔹 Mock de linhas (fica fora do componente agora)
-// quando você integrar com backend, pode remover isso daqui.
-const mockLines = {
-  DFG0053049: {
-    code: "DFG0053049",
-    name: "Linha Brasília - São Paulo",
-    origin: "BRASÍLIA",
-    destination: "SÃO PAULO",
-    originState: "DF",
-    destinationState: "SP",
-    initialPoint: {
-      name: "Garagem Brasília",
-      city: "Brasília",
-      state: "DF",
-      lat: -15.7942,
-      lng: -47.8822,
-    },
-  },
-  SPG0021034: {
-    code: "SPG0021034",
-    name: "Linha São Paulo - Rio de Janeiro",
-    origin: "SÃO PAULO",
-    destination: "RIO DE JANEIRO",
-    originState: "SP",
-    destinationState: "RJ",
-    initialPoint: {
-      name: "Garagem São Paulo",
-      city: "São Paulo",
-      state: "SP",
-      lat: -23.5505,
-      lng: -46.6333,
-    },
-  },
+import rawLines from "@/data/Lista-de-linhas.json";
+
+// ===============================
+// TIPAGEM DO CSV NORMALIZADA
+// ===============================
+
+type RawLine = (typeof rawLines)[number];
+
+export type Line = {
+  prefixo: string;
+  nomeEmpresa: string;
+  ufOrigem: string;
+  municipioOrigem: string;
+  instalacaoOrigem: string;
+  ufDestino: string;
+  municipioDestino: string;
+  instalacaoDestino: string;
+  prefixoSGP: string;
+  situacao: string;
+  quantidadeSecoes: number;
+  ok: string;
 };
 
-type SelectedLine = (typeof mockLines)[keyof typeof mockLines] | null;
+// Normaliza o JSON (com nomes padronizados)
+const lines: Line[] = (rawLines as RawLine[]).map((l) => ({
+  prefixo: l["Prefixo"],
+  nomeEmpresa: l["Nome Empresa"],
+  ufOrigem: l["UF Origem"],
+  municipioOrigem: l["Município Origem"],
+  instalacaoOrigem: l["Instalação Origem"],
+  ufDestino: l["UF Destino"],
+  municipioDestino: l["Município Destino"],
+  instalacaoDestino: l["Instalação Destino"],
+  prefixoSGP: String(l["PrefixoSGP"] ?? ""),
+  situacao: l["Situação"],
+  quantidadeSecoes: Number(l["Quantidade de Seções"] ?? 0),
+  ok: l["OK"],
+}));
+
+// Busca por códigos (prefixo ou prefixoSGP)
+function findLineByCode(code: string): Line | undefined {
+  const trimmed = code.trim().toUpperCase();
+
+  return lines.find(
+    (line) =>
+      line.prefixo.toUpperCase() === trimmed ||
+      line.prefixoSGP.toUpperCase() === trimmed
+  );
+}
+
+type SelectedLine = Line | null;
+
+// ===============================
+// PARAMETROS ACEITOS PELOS HANDLERS
+// ===============================
 
 interface CreateSchemeHandlersParams {
   routePoints: RoutePoint[];
@@ -51,10 +70,10 @@ interface CreateSchemeHandlersParams {
   setIsModalOpen: (open: boolean) => void;
 }
 
-/**
- * Função que recebe os estados e devolve
- * os handlers já prontos pra usar no componente.
- */
+// ===============================
+// FUNÇÃO PRINCIPAL QUE EXPORTA OS HANDLERS
+// ===============================
+
 export function createSchemeHandlers({
   routePoints,
   setRoutePoints,
@@ -64,83 +83,227 @@ export function createSchemeHandlers({
   setLineCode,
   setIsModalOpen,
 }: CreateSchemeHandlersParams) {
-  // 🟦 1) Change line code
+  // =====================================
+  // 1) ALTERAR LINHA
+  // =====================================
   const handleLineCodeChange = (code: string) => {
     setLineCode(code);
-    const line = mockLines[code as keyof typeof mockLines];
+    const line = findLineByCode(code);
     setSelectedLine(line ?? null);
   };
 
-  // 🟦 2) Add point
-  const handleAddPoint = (point: any) => {
-    if (!selectedLine) return;
+  // Define como ponto inicial sem mudar a ordem da lista
+  // Recalcula horários para frente E para trás.
+  // Pressupõe que `tripTime` (HH:mm) já esteja definido no escopo do handler.
+
+  const handleSetInitialPoint = (pointId: string) => {
     if (!tripTime) return;
 
-    const lastPoint =
-      routePoints.length > 0 ? routePoints[routePoints.length - 1] : null;
-
-    const previousLocation = lastPoint?.location ?? selectedLine.initialPoint;
-    if (!previousLocation) return;
-
-    const distanceKm = calculateDistance(
-      previousLocation.lat,
-      previousLocation.lng,
-      point.lat,
-      point.lng
-    );
-
-    const avgSpeed = point.avgSpeed || 80;
-    const driveTimeMin = Math.round((distanceKm / avgSpeed) * 60);
-
-    let arrivalTime = "";
-    if (lastPoint) {
-      arrivalTime = addMinutesToTime(lastPoint.departureTime, driveTimeMin);
-    } else {
-      arrivalTime = addMinutesToTime(tripTime, driveTimeMin);
-    }
-
-    const stopTimeMin = point.localTime ?? 0;
-    const departureTime = addMinutesToTime(arrivalTime, stopTimeMin);
-
-    const cumulativeDistanceKm =
-      (lastPoint?.cumulativeDistanceKm ?? 0) + distanceKm;
-
-    const newPoint: RoutePoint = {
-      id: `point-${Date.now()}`,
-      order: routePoints.length + 1,
-      type: point.pointType, // "PP", "PA", "PD", etc.
-
-      distanceKm,
-      cumulativeDistanceKm,
-      driveTimeMin,
-      stopTimeMin,
-
-      arrivalTime,
-      departureTime,
-
-      location: {
-        id: point.locationId ?? `loc-${Date.now()}`,
-        name:
-          point.name ??
-          point.description ??
-          `${point.city ?? ""}${point.state ? " / " + point.state : ""}`,
-        city: point.city,
-        state: point.state,
-        shortName: point.sigla ?? "",
-        kind: point.pointType,
-        lat: point.lat,
-        lng: point.lng,
-      },
-
-      avgSpeed,
-      justification: point.justification || "",
+    // Helpers para converter horário <-> minutos
+    const toMinutes = (time?: string | null): number | null => {
+      if (!time) return null;
+      const [h, m] = time.split(":").map(Number);
+      if (Number.isNaN(h) || Number.isNaN(m)) return null;
+      return h * 60 + m;
     };
 
-    setRoutePoints([...routePoints, newPoint]);
-    setIsModalOpen(false);
+    const toTimeString = (mins: number): string => {
+      const total = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
+      const h = Math.floor(total / 60);
+      const m = total % 60;
+      return `${h.toString().padStart(2, "0")}:${m
+        .toString()
+        .padStart(2, "0")}`;
+    };
+
+    setRoutePoints((prev) => {
+      if (!prev.length) return prev;
+
+      const points = prev.map((p) => ({ ...p }));
+      const initialIndex = points.findIndex((p) => p.id === pointId);
+      if (initialIndex === -1) return prev;
+
+      const startMinutes = toMinutes(tripTime);
+      if (startMinutes === null) return prev;
+
+      // 1) Ponto inicial: define saída e chegada
+      const initialPoint = points[initialIndex];
+      initialPoint.departureTime = tripTime;
+
+      const stopInitial = initialPoint.stopTimeMin ?? 0;
+      const initialArrivalMin = startMinutes - stopInitial;
+      initialPoint.arrivalTime =
+        initialArrivalMin >= 0 ? toTimeString(initialArrivalMin) : "";
+
+      // IMPORTANTE: aqui consideramos que driveTimeMin e distanceKm
+      // representam o trecho "do ponto ANTERIOR -> ponto ATUAL"
+      // (valor armazenado no ponto de destino).
+
+      // 2) Recalcula horários PARA FRENTE (pontos depois do inicial)
+      for (let i = initialIndex + 1; i < points.length; i++) {
+        const current = points[i];
+        const prevPoint = points[i - 1];
+
+        const prevDepartureMin = toMinutes(prevPoint.departureTime);
+        if (prevDepartureMin === null) break;
+
+        const driveTimeMin = current.driveTimeMin ?? 0; // trecho prev -> current
+        const stopTimeCurrent = current.stopTimeMin ?? 0;
+
+        const arrivalMin = prevDepartureMin + driveTimeMin;
+        const departureMin = arrivalMin + stopTimeCurrent;
+
+        current.arrivalTime = toTimeString(arrivalMin);
+        current.departureTime = toTimeString(departureMin);
+      }
+
+      // 3) Recalcula horários PARA TRÁS (pontos antes do inicial)
+      // Fórmulas usando o fato de que driveTimeMin está no ponto de destino:
+      // arrival(i+1)      = departure(i+1) - stopTime(i+1)
+      // departure(i)      = arrival(i+1)  - driveTime(i+1)
+      // arrival(i)        = departure(i)  - stopTime(i)
+      for (let i = initialIndex - 1; i >= 0; i--) {
+        const current = points[i];
+        const nextPoint = points[i + 1];
+
+        const departureNextMin = toMinutes(nextPoint.departureTime);
+        if (departureNextMin === null) break;
+
+        const stopTimeNext = nextPoint.stopTimeMin ?? 0;
+        const driveTimeMin = nextPoint.driveTimeMin ?? 0; // trecho current -> next
+        const stopTimeCurrent = current.stopTimeMin ?? 0;
+
+        const arrivalNextMin = departureNextMin - stopTimeNext;
+        const departureCurrentMin = arrivalNextMin - driveTimeMin;
+        const arrivalCurrentMin = departureCurrentMin - stopTimeCurrent;
+
+        current.departureTime = toTimeString(departureCurrentMin);
+        current.arrivalTime = toTimeString(arrivalCurrentMin);
+      }
+
+      return points;
+    });
   };
 
-  // 🟦 3) Update point
+  // =====================================
+  // 2) ADICIONAR UM NOVO PONTO
+  // =====================================
+  const handleAddPoint = (pointInput: any) => {
+    setRoutePoints((prev) => {
+      // 1) Se já vier como RoutePoint completo, só adiciona
+      if (
+        pointInput &&
+        typeof pointInput === "object" &&
+        "id" in pointInput &&
+        "order" in pointInput &&
+        "location" in pointInput
+      ) {
+        const asRoutePoint = pointInput as RoutePoint;
+        return [...prev, asRoutePoint];
+      }
+
+      // 2) Assume que veio do modal no formato:
+      // {
+      //   type,
+      //   stopTimeMin,
+      //   avgSpeed?,
+      //   justification?,
+      //   isRestStop?, ...
+      //   location: { id, name, city, state, lat, lng, shortName?, kind? }
+      // }
+      const location = pointInput.location;
+
+      const last = prev[prev.length - 1];
+      const nextOrder = last ? last.order + 1 : 1;
+
+      let distanceKm = 0;
+      let cumulativeDistanceKm = 0;
+      let driveTimeMin = 0;
+
+      if (last) {
+        distanceKm = calculateDistance(
+          last.location.lat,
+          last.location.lng,
+          Number(location.lat),
+          Number(location.lng)
+        );
+
+        cumulativeDistanceKm = last.cumulativeDistanceKm + distanceKm;
+
+        const customSpeed =
+          typeof pointInput.avgSpeed === "number"
+            ? pointInput.avgSpeed
+            : undefined;
+
+        driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
+      } else {
+        distanceKm = 0;
+        cumulativeDistanceKm = 0;
+        driveTimeMin = 0;
+      }
+
+      const stopTimeMin = Number(pointInput.stopTimeMin ?? 5);
+
+      // calcula horários do novo ponto (se já existir horário no ponto anterior)
+      let arrivalTime = "";
+      let departureTime = "";
+
+      if (last && last.departureTime && driveTimeMin > 0) {
+        // Hr. Visita = saída do anterior + tempo de deslocamento
+        arrivalTime = addMinutesToTime(last.departureTime, driveTimeMin);
+        // Hora Saída = Hr. Visita + tempo no local
+        departureTime = addMinutesToTime(arrivalTime, stopTimeMin);
+      }
+
+      const newPoint: RoutePoint = {
+        id: String(location.id ?? crypto.randomUUID()),
+        order: nextOrder,
+        type: pointInput.type as RoutePoint["type"],
+        stopTimeMin,
+
+        distanceKm,
+        cumulativeDistanceKm,
+        driveTimeMin,
+        arrivalTime,
+        departureTime,
+
+        location: {
+          id: String(location.id),
+          name: String(location.name ?? ""),
+          city: String(location.city ?? ""),
+          state: String(location.state ?? ""),
+          shortName: String(location.shortName ?? location.name ?? ""),
+          kind: String(location.kind ?? "OUTRO"),
+          lat: Number(location.lat ?? 0),
+          lng: Number(location.lng ?? 0),
+        },
+
+        avgSpeed:
+          driveTimeMin > 0
+            ? Number((distanceKm / (driveTimeMin / 60)).toFixed(1))
+            : undefined,
+
+        justification: pointInput.justification ?? "",
+
+        // ---------------------------------------
+        //  NOVAS FLAGS ANTT (aceita múltiplas)
+        // ---------------------------------------
+        isRestStop: !!pointInput.isRestStop, // Parada descanso / 330 km
+        isSupportPoint: !!pointInput.isSupportPoint, // Ponto de apoio / 402–495 km
+        isDriverChange: !!pointInput.isDriverChange, // Troca de motorista / 660 km
+        isBoardingPoint: !!pointInput.isBoardingPoint, // Embarque
+        isDropoffPoint: !!pointInput.isDropoffPoint, // Desembarque
+        isFreeStop: !!pointInput.isFreeStop, // Parada livre / comercial
+      };
+
+      const next = [...prev, newPoint];
+      return next;
+    });
+  };
+
+  // =====================================
+  // 3) ATUALIZAR UM PONTO EXISTENTE
+  // =====================================
   const handleUpdatePoint = (id: string, updates: Partial<RoutePoint>) => {
     setRoutePoints((prevPoints) => {
       const pointIndex = prevPoints.findIndex((p) => p.id === id);
@@ -152,8 +315,8 @@ export function createSchemeHandlers({
         ...updates,
       };
 
-      // se mudou o tempo de parada, recalcula saída
-      if (updates.stopTimeMin !== undefined) {
+      // só recalcula saída se não for o ponto inicial
+      if (updates.stopTimeMin !== undefined && pointIndex > 0) {
         updatedPoint.departureTime = addMinutesToTime(
           updatedPoint.arrivalTime,
           updatedPoint.stopTimeMin
@@ -162,7 +325,7 @@ export function createSchemeHandlers({
 
       newPoints[pointIndex] = updatedPoint;
 
-      // recalcula os seguintes
+      // recalcula os pontos seguintes
       for (let i = pointIndex + 1; i < newPoints.length; i++) {
         const prevPoint = newPoints[i - 1];
         const current = { ...newPoints[i] };
@@ -183,41 +346,57 @@ export function createSchemeHandlers({
     });
   };
 
-  // 🟦 4) Delete point
+  // =====================================
+  // 4) DELETAR UM PONTO
+  // =====================================
   const handleDeletePoint = (id: string) => {
     setRoutePoints((prevPoints) => {
-      const pointIndex = prevPoints.findIndex((p) => p.id === id);
-      if (pointIndex === -1) return prevPoints;
-
       const newPoints = prevPoints.filter((p) => p.id !== id);
 
       for (let i = 0; i < newPoints.length; i++) {
-        const prevPoint = i > 0 ? newPoints[i - 1] : null;
-        const prevLocation = prevPoint?.location ?? selectedLine?.initialPoint;
         const current = { ...newPoints[i] };
 
-        if (!prevLocation || !current.location) continue;
+        // 🔵 REGRAS ESPECIAIS PARA O PRIMEIRO PONTO
+        if (i === 0) {
+          newPoints[i] = {
+            ...current,
+            order: 1,
+            distanceKm: 0,
+            cumulativeDistanceKm: 0,
+            driveTimeMin: 0,
+            stopTimeMin: 0,
+            arrivalTime: "",
+            departureTime: tripTime || current.departureTime || "00:00",
+          };
+          continue;
+        }
 
-        const distanceKm = calculateDistance(
-          prevLocation.lat,
-          prevLocation.lng,
+        // Demais pontos calculados normalmente
+        const prevPoint = newPoints[i - 1];
+
+        let distanceKm = 0;
+        let cumulativeDistanceKm = 0;
+        let driveTimeMin = 0;
+        let arrivalTime = "";
+
+        // distância do ponto anterior -> ponto atual
+        distanceKm = calculateDistance(
+          prevPoint.location.lat,
+          prevPoint.location.lng,
           current.location.lat,
           current.location.lng
         );
 
-        const prevCumulative = prevPoint?.cumulativeDistanceKm ?? 0;
-        const cumulativeDistanceKm = prevCumulative + distanceKm;
+        cumulativeDistanceKm = prevPoint.cumulativeDistanceKm + distanceKm;
 
-        const avgSpeed = current.avgSpeed ?? 80;
-        const driveTimeMin = Math.round((distanceKm / avgSpeed) * 60);
+        // usa a mesma regra da planilha + override da velocidade
+        const customSpeed =
+          typeof current.avgSpeed === "number" ? current.avgSpeed : undefined;
 
-        let arrivalTime = "";
-        if (prevPoint) {
-          arrivalTime = addMinutesToTime(prevPoint.departureTime, driveTimeMin);
-        } else if (tripTime) {
-          arrivalTime = addMinutesToTime(tripTime, driveTimeMin);
-        }
+        driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
 
+        // chegada e saída recalculadas
+        arrivalTime = addMinutesToTime(prevPoint.departureTime, driveTimeMin);
         const departureTime = addMinutesToTime(
           arrivalTime,
           current.stopTimeMin
@@ -231,6 +410,10 @@ export function createSchemeHandlers({
           driveTimeMin,
           arrivalTime,
           departureTime,
+          avgSpeed:
+            driveTimeMin > 0
+              ? Number((distanceKm / (driveTimeMin / 60)).toFixed(1))
+              : current.avgSpeed,
         };
       }
 
@@ -243,18 +426,20 @@ export function createSchemeHandlers({
     handleAddPoint,
     handleUpdatePoint,
     handleDeletePoint,
+    handleSetInitialPoint,
   };
 }
 
-// ----------------------------------------------------
-// utils locais (saíram do CreateSchemePage)
-// ----------------------------------------------------
+// ===============================
+// HELPERS LOCAIS
+// ===============================
+
 function calculateDistance(
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
-): number {
+) {
   const R = 6371;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -268,18 +453,51 @@ function calculateDistance(
   return Math.round(R * c * 10) / 10;
 }
 
-function toRad(degrees: number): number {
-  return degrees * (Math.PI / 180);
+// Regra de tempo de deslocamento baseada na planilha
+function computeDriveTimeMinutes(
+  distanceKm: number,
+  customSpeed?: number | null
+): number {
+  const FIXED_MINUTES = 30; // 30 min para casos especiais
+  const SPEED_IN_RANGE = 70; // 10..100 km
+  const SPEED_OUT_RANGE = 80; // fora dessa faixa
+
+  // distância inválida ou negativa -> 30 min
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+    return FIXED_MINUTES;
+  }
+
+  // até 15 km -> sempre 30 min (regra fixa)
+  if (distanceKm < 15) {
+    return FIXED_MINUTES;
+  }
+
+  // se veio velocidade customizada do modal, respeita ela
+  let speed: number | null = null;
+  if (typeof customSpeed === "number" && customSpeed > 0) {
+    speed = customSpeed;
+  } else {
+    // regra padrão da planilha
+    speed =
+      distanceKm >= 10 && distanceKm <= 100 ? SPEED_IN_RANGE : SPEED_OUT_RANGE;
+  }
+
+  const timeHours = distanceKm / speed;
+  const minutes = Math.round(timeHours * 60);
+
+  // failsafe: se algo der NaN/Infinity, cai para 30 min
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : FIXED_MINUTES;
 }
 
-export function addMinutesToTime(time: string, minutes: number): string {
+function toRad(deg: number) {
+  return deg * (Math.PI / 180);
+}
+
+export function addMinutesToTime(time: string, minutes: number) {
   if (!time) return "";
   const [hours, mins] = time.split(":").map(Number);
-  const totalMinutes = hours * 60 + mins + minutes;
-  const newHours = Math.floor(totalMinutes / 60) % 24;
-  const newMins = totalMinutes % 60;
-  return `${String(newHours).padStart(2, "0")}:${String(newMins).padStart(
-    2,
-    "0"
-  )}`;
+  const total = hours * 60 + mins + minutes;
+  const h = Math.floor(total / 60) % 24;
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
