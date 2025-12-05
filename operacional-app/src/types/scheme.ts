@@ -34,6 +34,7 @@ export interface RoutePoint {
   isBoardingPoint?: boolean; // embarque
   isDropoffPoint?: boolean; // desembarque
   isFreeStop?: boolean; // parada livre / comercial
+  isInitial?: boolean;
 }
 
 export interface InitialPoint {

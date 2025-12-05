@@ -4,7 +4,8 @@ import dotenv from "dotenv";
 
 import { locationsRouter } from "./modules/locations";
 import { schemesRouter } from "./modules/schemes";
-import { schemePointsRouter } from "./modules/schemePoints"; // 👈 novo
+import { schemePointsRouter } from "./modules/schemePoints";
+import roadSegmentsRoutes from "./modules/roadSegments/roadSegments.routes";
 
 dotenv.config();
 
@@ -29,7 +30,8 @@ app.get("/status", (_req, res) => {
 
 app.use("/locations", locationsRouter);
 app.use("/schemes", schemesRouter);
-app.use("/scheme-points", schemePointsRouter); // 👈 novo
+app.use("/scheme-points", schemePointsRouter);
+app.use("/road-segments", roadSegmentsRoutes);
 
 app.listen(port, () => {
   console.log(`🚀 API rodando em http://localhost:${port}`);

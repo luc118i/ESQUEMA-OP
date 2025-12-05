@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ArrowLeft, Plus, Save, Map, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import type { RoutePoint } from "@/types/scheme";
 import { createSchemeHandlers, type Line } from "./createSchemeHandlers";
 import { InitialRoutePointCard } from "@/components/scheme/InitialRoutePointCard";
 
+import { computeANTTAlertsForRoute } from "@/lib/anttRules";
+
 interface CreateSchemePageProps {
   onBack: () => void;
 }
@@ -26,7 +28,7 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
   const [lineCode, setLineCode] = useState("");
   const [selectedLine, setSelectedLine] = useState<Line | null>(null);
   const [direction, setDirection] = useState<Direction | "">("");
-  const [tripTime, setTripTime] = useState("");
+  const [tripTime, setTripTime] = useState<string>("");
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -37,6 +39,8 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
     handleUpdatePoint,
     handleDeletePoint,
     handleSetInitialPoint,
+    handleMovePointUp,
+    handleMovePointDown,
   } = createSchemeHandlers({
     routePoints,
     setRoutePoints,
@@ -77,6 +81,23 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
       : selectedLine?.municipioOrigem;
   const finalState =
     direction === "ida" ? selectedLine?.ufDestino : selectedLine?.ufOrigem;
+
+  const anttAlertsByPointId = useMemo(
+    () => computeANTTAlertsForRoute(routePoints),
+    [routePoints]
+  );
+  const handleAddPointAsInitial = async (pointInput: any) => {
+    // 1) adiciona normalmente (distância, driveTime, etc.)
+    await handleAddPoint(pointInput);
+
+    // 2) usa o id do local (que é o mesmo id do RoutePoint)
+    const pointId = String(pointInput.location.id);
+
+    // 3) aplica a regra de ponto inicial, se houver horário de viagem
+    if (tripTime) {
+      handleSetInitialPoint(pointId, tripTime);
+    }
+  };
 
   return (
     <div className="min-h-screen">
@@ -298,15 +319,21 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                       point={point}
                       index={index}
                       onUpdate={handleUpdatePoint}
-                      onDelete={handleDeletePoint} // se quiser permitir
+                      onDelete={handleDeletePoint} // << CORRIGIDO
                     />
                   ) : (
                     <RoutePointCard
                       key={point.id}
                       point={point}
                       index={index}
+                      alerts={anttAlertsByPointId[point.id] ?? []}
                       onUpdate={handleUpdatePoint}
-                      onDelete={handleDeletePoint}
+                      onDelete={handleDeletePoint} // << CORRIGIDO
+                      onMoveUp={() => handleMovePointUp(point.id)}
+                      onMoveDown={() => handleMovePointDown(point.id)}
+                      onInsertAfter={() =>
+                        console.log("inserir depois de", point.id)
+                      }
                     />
                   )
                 )}
@@ -355,40 +382,42 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
       <AddPointModal
         isOpen={isModalOpen}
         onClose={() => {
+          // chamado pelo próprio AddPointModal.handleClose()
           setIsModalOpen(false);
           setModalMode(null);
         }}
         onAdd={(point) => {
-          // fluxo normal: adicionar ponto à rota
+          // só regra de negócio:
+          // adicionar ponto na rota
           handleAddPoint(point);
-          setIsModalOpen(false);
-          setModalMode(null);
         }}
-        onSetInitial={(point) => {
-          // 1) Verifica se já existe um RoutePoint com esse local
+        onSetInitial={async (pointFromModal) => {
+          const locId = String(pointFromModal.location.id);
+
+          if (!tripTime) {
+            // opcional: toast avisando que precisa definir "Horário da Viagem"
+            return;
+          }
+
+          // 1) verifica se o ponto já existe
           const existing = routePoints.find(
-            (p) => p.id === point.id || p.location.id === point.id
+            (p) => p.location?.id === locId || p.id === locId
           );
 
           if (existing) {
-            // se já existe na rota, só recalcula horários com base nele
-            handleSetInitialPoint(existing.id);
+            // já existe: só recalcula horários a partir dele
+            handleSetInitialPoint(existing.id, tripTime);
           } else {
-            // se NÃO existe na rota, criamos um novo RoutePoint
-            const routePointId = String(point.id ?? crypto.randomUUID());
-
-            // adiciona o ponto à rota (handleAddPoint sabe montar o RoutePoint a partir do LocationOption)
-            handleAddPoint({ ...point, id: routePointId });
-
-            // e já define esse ponto (recém-adicionado) como inicial:
-            handleSetInitialPoint(routePointId);
+            // NÃO existe: primeiro adiciona, depois marca como inicial
+            await handleAddPoint(pointFromModal);
+            handleSetInitialPoint(locId, tripTime);
           }
 
-          setIsModalOpen(false);
-          setModalMode(null);
+          // não precisa mais mexer em isModalOpen/modalMode aqui,
+          // o próprio modal já chama handleClose() depois de onSetInitial
         }}
-        canSetInitial={true}
-        initialPoint={routePoints.length > 0 ? routePoints[0] : null}
+        canSetInitial={!!tripTime}
+        initialPoint={routePoints.find((p) => p.isInitial) ?? null}
       />
     </div>
   );

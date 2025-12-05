@@ -92,14 +92,80 @@ export function createSchemeHandlers({
     setSelectedLine(line ?? null);
   };
 
+  // =====================================
+  // HELPER: recalcular tudo após qualquer mudança na lista
+  // =====================================
+  const recalcAllRoutePoints = (points: RoutePoint[]): RoutePoint[] => {
+    if (!points.length) return points;
+
+    // garante ordem sequencial
+    let newPoints = points.map((p, index) => ({
+      ...p,
+      order: index + 1,
+    }));
+
+    // garante que exista um ponto inicial
+    const hasInitial = newPoints.some((p) => p.isInitial);
+    if (!hasInitial) {
+      newPoints = newPoints.map((p, index) => ({
+        ...p,
+        isInitial: index === 0,
+      }));
+    }
+
+    // recalcula distâncias / tempos de deslocamento
+    for (let i = 0; i < newPoints.length; i++) {
+      const current = { ...newPoints[i] };
+
+      if (i === 0) {
+        newPoints[i] = {
+          ...current,
+          order: 1,
+          distanceKm: 0,
+          cumulativeDistanceKm: 0,
+          driveTimeMin: 0,
+        };
+        continue;
+      }
+
+      const prevPoint = newPoints[i - 1];
+
+      const distanceKm = calculateDistance(
+        prevPoint.location.lat,
+        prevPoint.location.lng,
+        current.location.lat,
+        current.location.lng
+      );
+
+      const cumulativeDistanceKm =
+        (prevPoint.cumulativeDistanceKm ?? 0) + distanceKm;
+
+      const customSpeed =
+        typeof current.avgSpeed === "number" ? current.avgSpeed : undefined;
+
+      const driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
+
+      newPoints[i] = {
+        ...current,
+        order: i + 1,
+        distanceKm,
+        cumulativeDistanceKm,
+        driveTimeMin,
+      };
+    }
+
+    // reaplica horários a partir do ponto inicial atual
+    const initial = newPoints.find((p) => p.isInitial)!;
+    return recalcTimesFromInitial(newPoints, initial.id, tripTime);
+  };
+
   // Define como ponto inicial sem mudar a ordem da lista
   // Recalcula horários para frente E para trás.
   // Pressupõe que `tripTime` (HH:mm) já esteja definido no escopo do handler.
 
-  const handleSetInitialPoint = (pointId: string) => {
-    if (!tripTime) return;
+  const handleSetInitialPoint = (pointId: string, tripStartTime: string) => {
+    if (!tripStartTime) return;
 
-    // Helpers para converter horário <-> minutos
     const toMinutes = (time?: string | null): number | null => {
       if (!time) return null;
       const [h, m] = time.split(":").map(Number);
@@ -119,27 +185,30 @@ export function createSchemeHandlers({
     setRoutePoints((prev) => {
       if (!prev.length) return prev;
 
-      const points = prev.map((p) => ({ ...p }));
+      // marca qual é o inicial
+      const points = prev.map((p) => ({
+        ...p,
+        isInitial: p.id === pointId,
+      }));
+
       const initialIndex = points.findIndex((p) => p.id === pointId);
       if (initialIndex === -1) return prev;
 
-      const startMinutes = toMinutes(tripTime);
+      const startMinutes = toMinutes(tripStartTime);
       if (startMinutes === null) return prev;
 
-      // 1) Ponto inicial: define saída e chegada
       const initialPoint = points[initialIndex];
-      initialPoint.departureTime = tripTime;
 
+      // saída do inicial = Horário da Viagem
+      initialPoint.departureTime = tripStartTime;
+
+      // chegada do inicial = saída - tempo de parada dele
       const stopInitial = initialPoint.stopTimeMin ?? 0;
       const initialArrivalMin = startMinutes - stopInitial;
       initialPoint.arrivalTime =
         initialArrivalMin >= 0 ? toTimeString(initialArrivalMin) : "";
 
-      // IMPORTANTE: aqui consideramos que driveTimeMin e distanceKm
-      // representam o trecho "do ponto ANTERIOR -> ponto ATUAL"
-      // (valor armazenado no ponto de destino).
-
-      // 2) Recalcula horários PARA FRENTE (pontos depois do inicial)
+      // === PRA FRENTE
       for (let i = initialIndex + 1; i < points.length; i++) {
         const current = points[i];
         const prevPoint = points[i - 1];
@@ -147,7 +216,7 @@ export function createSchemeHandlers({
         const prevDepartureMin = toMinutes(prevPoint.departureTime);
         if (prevDepartureMin === null) break;
 
-        const driveTimeMin = current.driveTimeMin ?? 0; // trecho prev -> current
+        const driveTimeMin = current.driveTimeMin ?? 0;
         const stopTimeCurrent = current.stopTimeMin ?? 0;
 
         const arrivalMin = prevDepartureMin + driveTimeMin;
@@ -157,11 +226,7 @@ export function createSchemeHandlers({
         current.departureTime = toTimeString(departureMin);
       }
 
-      // 3) Recalcula horários PARA TRÁS (pontos antes do inicial)
-      // Fórmulas usando o fato de que driveTimeMin está no ponto de destino:
-      // arrival(i+1)      = departure(i+1) - stopTime(i+1)
-      // departure(i)      = arrival(i+1)  - driveTime(i+1)
-      // arrival(i)        = departure(i)  - stopTime(i)
+      // === PRA TRÁS
       for (let i = initialIndex - 1; i >= 0; i--) {
         const current = points[i];
         const nextPoint = points[i + 1];
@@ -170,7 +235,7 @@ export function createSchemeHandlers({
         if (departureNextMin === null) break;
 
         const stopTimeNext = nextPoint.stopTimeMin ?? 0;
-        const driveTimeMin = nextPoint.driveTimeMin ?? 0; // trecho current -> next
+        const driveTimeMin = nextPoint.driveTimeMin ?? 0;
         const stopTimeCurrent = current.stopTimeMin ?? 0;
 
         const arrivalNextMin = departureNextMin - stopTimeNext;
@@ -188,117 +253,122 @@ export function createSchemeHandlers({
   // =====================================
   // 2) ADICIONAR UM NOVO PONTO
   // =====================================
-  const handleAddPoint = (pointInput: any) => {
-    setRoutePoints((prev) => {
-      // 1) Se já vier como RoutePoint completo, só adiciona
-      if (
-        pointInput &&
-        typeof pointInput === "object" &&
-        "id" in pointInput &&
-        "order" in pointInput &&
-        "location" in pointInput
-      ) {
-        const asRoutePoint = pointInput as RoutePoint;
-        return [...prev, asRoutePoint];
-      }
 
-      // 2) Assume que veio do modal no formato:
-      // {
-      //   type,
-      //   stopTimeMin,
-      //   avgSpeed?,
-      //   justification?,
-      //   isRestStop?, ...
-      //   location: { id, name, city, state, lat, lng, shortName?, kind? }
-      // }
-      const location = pointInput.location;
+  const handleAddPoint = async (pointInput: any) => {
+    // 1) Se já vier como RoutePoint, continua igual
+    if (
+      pointInput &&
+      typeof pointInput === "object" &&
+      "id" in pointInput &&
+      "order" in pointInput &&
+      "location" in pointInput
+    ) {
+      const asRoutePoint = pointInput as RoutePoint;
+      setRoutePoints((prev) => [...prev, asRoutePoint]);
+      return;
+    }
 
-      const last = prev[prev.length - 1];
-      const nextOrder = last ? last.order + 1 : 1;
+    // 2) Payload vindo do modal: { location, type, stopTimeMin, ... }
+    const loc = pointInput.location;
 
-      let distanceKm = 0;
-      let cumulativeDistanceKm = 0;
-      let driveTimeMin = 0;
+    const last = routePoints[routePoints.length - 1];
+    const nextOrder = last ? last.order + 1 : 1;
 
-      if (last) {
+    let distanceKm = 0;
+    let cumulativeDistanceKm = last ? last.cumulativeDistanceKm : 0;
+    let driveTimeMin = 0;
+
+    // ==============================
+    // DISTÂNCIA (API + fallback)
+    // ==============================
+    if (last) {
+      try {
+        const params = new URLSearchParams({
+          fromLocationId: String(last.location.id),
+          toLocationId: String(loc.id),
+        });
+
+        const res = await fetch(
+          `/road-segments/road-distance?${params.toString()}`
+        );
+
+        if (!res.ok) {
+          throw new Error("Falha ao obter distância pelo traçado");
+        }
+
+        const data = await res.json();
+        distanceKm = Number(data.distanceKm) || 0;
+      } catch (err) {
+        console.error(
+          "[handleAddPoint] Erro ao chamar /road-segments/road-distance, usando Haversine como fallback:",
+          err
+        );
+
         distanceKm = calculateDistance(
           last.location.lat,
           last.location.lng,
-          Number(location.lat),
-          Number(location.lng)
+          Number(loc.lat),
+          Number(loc.lng)
         );
-
-        cumulativeDistanceKm = last.cumulativeDistanceKm + distanceKm;
-
-        const customSpeed =
-          typeof pointInput.avgSpeed === "number"
-            ? pointInput.avgSpeed
-            : undefined;
-
-        driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
-      } else {
-        distanceKm = 0;
-        cumulativeDistanceKm = 0;
-        driveTimeMin = 0;
       }
 
-      const stopTimeMin = Number(pointInput.stopTimeMin ?? 5);
+      cumulativeDistanceKm = (last.cumulativeDistanceKm ?? 0) + distanceKm;
 
-      // calcula horários do novo ponto (se já existir horário no ponto anterior)
-      let arrivalTime = "";
-      let departureTime = "";
+      const customSpeed =
+        typeof pointInput.avgSpeed === "number"
+          ? pointInput.avgSpeed
+          : undefined;
 
-      if (last && last.departureTime && driveTimeMin > 0) {
-        // Hr. Visita = saída do anterior + tempo de deslocamento
-        arrivalTime = addMinutesToTime(last.departureTime, driveTimeMin);
-        // Hora Saída = Hr. Visita + tempo no local
-        departureTime = addMinutesToTime(arrivalTime, stopTimeMin);
-      }
+      driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
+    }
 
-      const newPoint: RoutePoint = {
-        id: String(location.id ?? crypto.randomUUID()),
-        order: nextOrder,
-        type: pointInput.type as RoutePoint["type"],
-        stopTimeMin,
+    // ==============================
+    // NUNCA DEFINE HORÁRIO AQUI
+    // ==============================
+    const stopTimeMin = Number(pointInput.stopTimeMin ?? 5);
 
-        distanceKm,
-        cumulativeDistanceKm,
-        driveTimeMin,
-        arrivalTime,
-        departureTime,
+    const newPoint: RoutePoint = {
+      id: String(loc.id),
+      order: nextOrder,
+      type: pointInput.type,
+      stopTimeMin,
 
-        location: {
-          id: String(location.id),
-          name: String(location.name ?? ""),
-          city: String(location.city ?? ""),
-          state: String(location.state ?? ""),
-          shortName: String(location.shortName ?? location.name ?? ""),
-          kind: String(location.kind ?? "OUTRO"),
-          lat: Number(location.lat ?? 0),
-          lng: Number(location.lng ?? 0),
-        },
+      distanceKm,
+      cumulativeDistanceKm,
+      driveTimeMin,
 
-        avgSpeed:
-          driveTimeMin > 0
-            ? Number((distanceKm / (driveTimeMin / 60)).toFixed(1))
-            : undefined,
+      // sempre em branco – só será preenchido pelo handleSetInitialPoint
+      arrivalTime: "",
+      departureTime: "",
 
-        justification: pointInput.justification ?? "",
+      location: {
+        id: String(loc.id),
+        name: String(loc.name ?? ""),
+        city: String(loc.city ?? ""),
+        state: String(loc.state ?? ""),
+        shortName: String(loc.shortName ?? loc.name ?? ""),
+        kind: String(loc.kind ?? "OUTRO"),
+        lat: Number(loc.lat ?? 0),
+        lng: Number(loc.lng ?? 0),
+      },
 
-        // ---------------------------------------
-        //  NOVAS FLAGS ANTT (aceita múltiplas)
-        // ---------------------------------------
-        isRestStop: !!pointInput.isRestStop, // Parada descanso / 330 km
-        isSupportPoint: !!pointInput.isSupportPoint, // Ponto de apoio / 402–495 km
-        isDriverChange: !!pointInput.isDriverChange, // Troca de motorista / 660 km
-        isBoardingPoint: !!pointInput.isBoardingPoint, // Embarque
-        isDropoffPoint: !!pointInput.isDropoffPoint, // Desembarque
-        isFreeStop: !!pointInput.isFreeStop, // Parada livre / comercial
-      };
+      avgSpeed:
+        driveTimeMin > 0
+          ? Number((distanceKm / (driveTimeMin / 60)).toFixed(1))
+          : undefined,
 
-      const next = [...prev, newPoint];
-      return next;
-    });
+      justification: pointInput.justification ?? "",
+
+      isRestStop: !!pointInput.isRestStop,
+      isSupportPoint: !!pointInput.isSupportPoint,
+      isDriverChange: !!pointInput.isDriverChange,
+      isBoardingPoint: !!pointInput.isBoardingPoint,
+      isDropoffPoint: !!pointInput.isDropoffPoint,
+      isFreeStop: !!pointInput.isFreeStop,
+      isInitial: false,
+    };
+
+    setRoutePoints((prev) => [...prev, newPoint]);
   };
 
   // =====================================
@@ -351,73 +421,45 @@ export function createSchemeHandlers({
   // =====================================
   const handleDeletePoint = (id: string) => {
     setRoutePoints((prevPoints) => {
-      const newPoints = prevPoints.filter((p) => p.id !== id);
+      const filtered = prevPoints.filter((p) => p.id !== id);
+      if (!filtered.length) return filtered;
+      return recalcAllRoutePoints(filtered);
+    });
+  };
 
-      for (let i = 0; i < newPoints.length; i++) {
-        const current = { ...newPoints[i] };
+  // =====================================
+  // 5) MOVER PONTO PARA CIMA
+  // =====================================
+  const handleMovePointUp = (id: string) => {
+    setRoutePoints((prevPoints) => {
+      const index = prevPoints.findIndex((p) => p.id === id);
+      if (index <= 0) return prevPoints; // já é o primeiro ou não achou
+      if (prevPoints[index].isInitial) return prevPoints; // ponto inicial não se mexe
 
-        // 🔵 REGRAS ESPECIAIS PARA O PRIMEIRO PONTO
-        if (i === 0) {
-          newPoints[i] = {
-            ...current,
-            order: 1,
-            distanceKm: 0,
-            cumulativeDistanceKm: 0,
-            driveTimeMin: 0,
-            stopTimeMin: 0,
-            arrivalTime: "",
-            departureTime: tripTime || current.departureTime || "00:00",
-          };
-          continue;
-        }
+      const newPoints = [...prevPoints];
+      const temp = newPoints[index - 1];
+      newPoints[index - 1] = newPoints[index];
+      newPoints[index] = temp;
 
-        // Demais pontos calculados normalmente
-        const prevPoint = newPoints[i - 1];
+      return recalcAllRoutePoints(newPoints);
+    });
+  };
 
-        let distanceKm = 0;
-        let cumulativeDistanceKm = 0;
-        let driveTimeMin = 0;
-        let arrivalTime = "";
+  // =====================================
+  // 6) MOVER PONTO PARA BAIXO
+  // =====================================
+  const handleMovePointDown = (id: string) => {
+    setRoutePoints((prevPoints) => {
+      const index = prevPoints.findIndex((p) => p.id === id);
+      if (index === -1 || index === prevPoints.length - 1) return prevPoints;
+      if (prevPoints[index].isInitial) return prevPoints; // ponto inicial não se mexe
 
-        // distância do ponto anterior -> ponto atual
-        distanceKm = calculateDistance(
-          prevPoint.location.lat,
-          prevPoint.location.lng,
-          current.location.lat,
-          current.location.lng
-        );
+      const newPoints = [...prevPoints];
+      const temp = newPoints[index + 1];
+      newPoints[index + 1] = newPoints[index];
+      newPoints[index] = temp;
 
-        cumulativeDistanceKm = prevPoint.cumulativeDistanceKm + distanceKm;
-
-        // usa a mesma regra da planilha + override da velocidade
-        const customSpeed =
-          typeof current.avgSpeed === "number" ? current.avgSpeed : undefined;
-
-        driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
-
-        // chegada e saída recalculadas
-        arrivalTime = addMinutesToTime(prevPoint.departureTime, driveTimeMin);
-        const departureTime = addMinutesToTime(
-          arrivalTime,
-          current.stopTimeMin
-        );
-
-        newPoints[i] = {
-          ...current,
-          order: i + 1,
-          distanceKm,
-          cumulativeDistanceKm,
-          driveTimeMin,
-          arrivalTime,
-          departureTime,
-          avgSpeed:
-            driveTimeMin > 0
-              ? Number((distanceKm / (driveTimeMin / 60)).toFixed(1))
-              : current.avgSpeed,
-        };
-      }
-
-      return newPoints;
+      return recalcAllRoutePoints(newPoints);
     });
   };
 
@@ -427,6 +469,8 @@ export function createSchemeHandlers({
     handleUpdatePoint,
     handleDeletePoint,
     handleSetInitialPoint,
+    handleMovePointUp,
+    handleMovePointDown,
   };
 }
 
@@ -500,4 +544,80 @@ export function addMinutesToTime(time: string, minutes: number) {
   const h = Math.floor(total / 60) % 24;
   const m = total % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function recalcTimesFromInitial(
+  points: RoutePoint[],
+  initialPointId: string,
+  tripStartTime: string
+): RoutePoint[] {
+  const toMinutes = (time?: string | null): number | null => {
+    if (!time) return null;
+    const [h, m] = time.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const toTimeString = (mins: number): string => {
+    const total = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+  };
+
+  const result = points.map((p) => ({ ...p }));
+  const initialIndex = result.findIndex((p) => p.id === initialPointId);
+  if (initialIndex === -1) return result;
+
+  const startMinutes = toMinutes(tripStartTime);
+  if (startMinutes === null) return result;
+
+  const initialPoint = result[initialIndex];
+  initialPoint.departureTime =
+    tripStartTime || initialPoint.departureTime || "00:00";
+
+  const stopInitial = initialPoint.stopTimeMin ?? 0;
+  const initialArrivalMin = startMinutes - stopInitial;
+  initialPoint.arrivalTime =
+    initialArrivalMin >= 0 ? toTimeString(initialArrivalMin) : "";
+
+  // pra frente
+  for (let i = initialIndex + 1; i < result.length; i++) {
+    const current = result[i];
+    const prevPoint = result[i - 1];
+
+    const prevDepartureMin = toMinutes(prevPoint.departureTime);
+    if (prevDepartureMin === null) break;
+
+    const driveTimeMin = current.driveTimeMin ?? 0;
+    const stopTimeCurrent = current.stopTimeMin ?? 0;
+
+    const arrivalMin = prevDepartureMin + driveTimeMin;
+    const departureMin = arrivalMin + stopTimeCurrent;
+
+    current.arrivalTime = toTimeString(arrivalMin);
+    current.departureTime = toTimeString(departureMin);
+  }
+
+  // pra trás
+  for (let i = initialIndex - 1; i >= 0; i--) {
+    const current = result[i];
+    const nextPoint = result[i + 1];
+
+    const departureNextMin = toMinutes(nextPoint.departureTime);
+    if (departureNextMin === null) break;
+
+    const stopTimeNext = nextPoint.stopTimeMin ?? 0;
+    const driveTimeMin = nextPoint.driveTimeMin ?? 0;
+    const stopTimeCurrent = current.stopTimeMin ?? 0;
+
+    const arrivalNextMin = departureNextMin - stopTimeNext;
+    const departureCurrentMin = arrivalNextMin - driveTimeMin;
+    const arrivalCurrentMin = departureCurrentMin - stopTimeCurrent;
+
+    current.departureTime = toTimeString(departureCurrentMin);
+    current.arrivalTime = toTimeString(arrivalCurrentMin);
+  }
+
+  return result;
 }

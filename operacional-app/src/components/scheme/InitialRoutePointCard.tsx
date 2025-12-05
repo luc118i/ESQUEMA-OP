@@ -14,15 +14,6 @@ interface InitialRoutePointCardProps {
   onDelete: (id: string) => void;
 }
 
-const pointTypes = [
-  { value: "PE", label: "PE - Ponto de Embarque" },
-  { value: "PD", label: "PD - Ponto de Desembarque" },
-  { value: "PP", label: "PP - Ponto de Parada" },
-  { value: "PA", label: "PA - Ponto de Apoio" },
-  { value: "TMJ", label: "TMJ - Troca de Motorista em Jornada" },
-  { value: "PL", label: "PL - Ponto Livre" },
-];
-
 export function InitialRoutePointCard({
   point,
   index,
@@ -55,7 +46,6 @@ export function InitialRoutePointCard({
               {name && (
                 <p className="text-slate-600 text-xs truncate">{name}</p>
               )}
-              {/* 👇 Removido o texto de distâncias aqui, pois não faz sentido para o primeiro ponto */}
             </div>
           </div>
 
@@ -94,12 +84,18 @@ export function InitialRoutePointCard({
               <label className="text-slate-600 text-xs mb-1.5 block">
                 Hr. Saída (início)
               </label>
-              <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 text-sm">
-                {point.departureTime}
+              <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-sm">
+                {point.departureTime ? (
+                  <span className="text-slate-900">{point.departureTime}</span>
+                ) : (
+                  <span className="text-slate-400 italic">
+                    Adicione o próximo ponto para calcular o horário
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Distância (vai ser 0.0 km pro primeiro, mas mantemos dinâmico) */}
+            {/* Distância (0,0 km pro primeiro, mas mantido dinâmico) */}
             <div>
               <label className="text-slate-600 text-xs mb-1.5 block">
                 Distância
@@ -110,27 +106,7 @@ export function InitialRoutePointCard({
               </div>
             </div>
 
-            {/* Tipo de ponto (editável) */}
-            <div>
-              <label className="text-slate-600 text-xs mb-1.5 block">
-                Tipo
-              </label>
-              <select
-                value={point.type}
-                onChange={(e) =>
-                  onUpdate(String(point.id), {
-                    type: e.target.value as RoutePoint["type"],
-                  })
-                }
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {pointTypes.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Campo Tipo removido para o primeiro card */}
           </div>
         </div>
       )}

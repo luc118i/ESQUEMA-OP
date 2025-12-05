@@ -5,23 +5,29 @@ import {
   ChevronDown,
   ChevronUp,
   Gauge,
-  Clock,
   Route,
+  ArrowUp,
+  ArrowDown,
+  Plus,
 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
 import { ANTTAlert } from "@/components/scheme/ANTTAlert";
 
 import type { RoutePoint } from "@/types/scheme";
+import type { ANTTAlertData } from "@/lib/anttRules";
 
 interface RoutePointCardProps {
   point: RoutePoint;
   index: number;
+  alerts: ANTTAlertData[];
   onUpdate: (id: string, updates: Partial<RoutePoint>) => void;
   onDelete: (id: string) => void;
+
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
+  onInsertAfter?: (id: string) => void;
 }
 
 const pointTypes = [
@@ -48,8 +54,12 @@ const localTimeOptions = [
 export function RoutePointCard({
   point,
   index,
+  alerts,
   onUpdate,
   onDelete,
+  onMoveUp,
+  onMoveDown,
+  onInsertAfter,
 }: RoutePointCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -57,17 +67,15 @@ export function RoutePointCard({
   const state = point.location?.state ?? "";
   const name = point.location?.name ?? `${city}${state ? " / " + state : ""}`;
 
-  // velocidade média calculada por trecho
   const avgSpeed =
     point.driveTimeMin > 0
       ? Number((point.distanceKm / (point.driveTimeMin / 60)).toFixed(1))
       : 0;
 
-  const alerts = generateANTTAlerts(point, index, avgSpeed);
-
   return (
-    <Card className="border border-slate-200 overflow-hidden">
-      {/* Header do Card */}
+    // ✅ group para controlar hover dos botões de mover
+    <Card className="relative border border-slate-200 overflow-hidden group">
+      {/* ===== Header do Card ===== */}
       <div className="bg-gradient-to-r from-slate-50 to-white p-4 border-b border-slate-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4 flex-1">
@@ -87,7 +95,50 @@ export function RoutePointCard({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* ===== Ações do Header (move + expand + delete) ===== */}
+          <div className="flex items-center gap-1">
+            {(onMoveUp || onMoveDown || onInsertAfter) && (
+              <div className="flex items-center gap-1 mr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onMoveUp && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 rounded-full border border-slate-200 bg-white shadow-sm hover:bg-slate-50"
+                    onClick={() => onMoveUp(String(point.id))}
+                  >
+                    <ArrowUp className="w-3.5 h-3.5 text-slate-600" />
+                  </Button>
+                )}
+
+                {onInsertAfter && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 rounded-full border border-slate-200 bg-white shadow-sm hover:bg-slate-50"
+                    onClick={() => onInsertAfter(String(point.id))}
+                  >
+                    <Plus className="w-3.5 h-3.5 text-slate-600" />
+                  </Button>
+                )}
+
+                {onMoveDown && (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 rounded-full border border-slate-200 bg-white shadow-sm hover:bg-slate-50"
+                    onClick={() => onMoveDown(String(point.id))}
+                  >
+                    <ArrowDown className="w-3.5 h-3.5 text-slate-600" />
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* expandir/retrair */}
             <Button
               variant="ghost"
               size="sm"
@@ -100,6 +151,8 @@ export function RoutePointCard({
                 <ChevronDown className="w-4 h-4" />
               )}
             </Button>
+
+            {/* excluir (sempre o último) */}
             <Button
               variant="ghost"
               size="sm"
@@ -112,7 +165,7 @@ export function RoutePointCard({
         </div>
       </div>
 
-      {/* Conteúdo do Card */}
+      {/* ===== Conteúdo do Card ===== */}
       {isExpanded && (
         <div className="p-4">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
@@ -168,7 +221,7 @@ export function RoutePointCard({
               </div>
             </div>
 
-            {/* Vel. Média (só leitura, calculada) */}
+            {/* Vel. Média */}
             <div>
               <label className="text-slate-600 text-xs mb-1.5 block">
                 Vel. Média
@@ -179,7 +232,7 @@ export function RoutePointCard({
               </div>
             </div>
 
-            {/* Distância (só leitura) */}
+            {/* Distância */}
             <div>
               <label className="text-slate-600 text-xs mb-1.5 block">
                 Distância
@@ -190,7 +243,7 @@ export function RoutePointCard({
               </div>
             </div>
 
-            {/* Tipo de Ponto (editável) */}
+            {/* Tipo de Ponto */}
             <div>
               <label className="text-slate-600 text-xs mb-1.5 block">
                 Tipo
@@ -212,23 +265,6 @@ export function RoutePointCard({
               </select>
             </div>
           </div>
-
-          {/* (Opcional) Justificativa – se for usar depois, é só descomentar e ajustar o tipo em RoutePoint */}
-          {/*
-          <div className="mb-4">
-            <label className="text-slate-600 text-xs mb-1.5 block">
-              Justificativa Operacional
-            </label>
-            <Input
-              value={point.justification ?? ""}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                onUpdate(String(point.id), { justification: e.target.value } as any)
-              }
-              placeholder="Descreva a justificativa para este ponto..."
-              className="text-sm"
-            />
-          </div>
-          */}
 
           {/* Alertas ANTT */}
           {alerts.length > 0 && (
@@ -256,105 +292,4 @@ function formatMinutesToHours(minutes: number): string {
   return `${String(hours).padStart(2, "0")}:${String(mins)
     .toString()
     .padStart(2, "0")}`;
-}
-
-interface ANTTAlertData {
-  type: "success" | "warning" | "error";
-  message: string;
-}
-
-function generateANTTAlerts(
-  point: RoutePoint,
-  index: number,
-  avgSpeed: number
-): ANTTAlertData[] {
-  const alerts: ANTTAlertData[] = [];
-  const accumulated = point.cumulativeDistanceKm ?? 0;
-
-  // Regra: Primeira parada deve ser entre 262 e 330 km
-  if (index === 0 && point.type === "PP") {
-    if (accumulated >= 262 && accumulated <= 330) {
-      alerts.push({
-        type: "success",
-        message: `Primeiro ponto de parada (${accumulated.toFixed(
-          1
-        )} / 330 km)`,
-      });
-    } else if (accumulated > 330) {
-      alerts.push({
-        type: "error",
-        message: `Distância acima do permitido (${accumulated.toFixed(
-          1
-        )} / 330 km)`,
-      });
-    } else if (accumulated < 262) {
-      alerts.push({
-        type: "warning",
-        message: `Parada antecipada (${accumulated.toFixed(1)} / 262 km)`,
-      });
-    }
-  }
-
-  // Regra: Primeiro ponto de apoio deve ser entre 402 e 495 km
-  if (point.type === "PA") {
-    if (accumulated >= 402 && accumulated <= 495) {
-      alerts.push({
-        type: "success",
-        message: `Ponto de apoio conforme (${accumulated.toFixed(1)} / 495 km)`,
-      });
-    } else if (accumulated < 402) {
-      alerts.push({
-        type: "warning",
-        message: `Ponto de apoio antecipado (${accumulated.toFixed(
-          1
-        )} / 402 km)`,
-      });
-    } else {
-      alerts.push({
-        type: "error",
-        message: `Ponto de apoio além do limite (${accumulated.toFixed(
-          1
-        )} / 495 km)`,
-      });
-    }
-  }
-
-  // Regra: Troca de motorista
-  if (point.type === "TMJ") {
-    if (accumulated <= 660) {
-      alerts.push({
-        type: "success",
-        message: `Troca de motorista em jornada (${accumulated.toFixed(
-          1
-        )} / 660 km)`,
-      });
-    } else {
-      alerts.push({
-        type: "error",
-        message: `Troca de motorista além do limite (${accumulated.toFixed(
-          1
-        )} / 660 km)`,
-      });
-    }
-  }
-
-  // Velocidade média alta
-  if (avgSpeed > 90) {
-    alerts.push({
-      type: "warning",
-      message: `Velocidade acima da recomendada (${avgSpeed} km/h)`,
-    });
-  }
-
-  // Tempo de parada muito curto
-  if ((point.type === "PP" || point.type === "PA") && point.stopTimeMin < 20) {
-    alerts.push({
-      type: "warning",
-      message: `Tempo de parada pode ser insuficiente (${formatMinutesToHours(
-        point.stopTimeMin
-      )})`,
-    });
-  }
-
-  return alerts;
 }
