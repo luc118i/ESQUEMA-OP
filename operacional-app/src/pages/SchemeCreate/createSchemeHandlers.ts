@@ -463,6 +463,81 @@ export function createSchemeHandlers({
     });
   };
 
+  // =====================================
+  // 7) INSERIR UM PONTO DEPOIS DE OUTRO
+  // =====================================
+  const handleInsertPointAfter = (anchorPointId: string, pointInput: any) => {
+    setRoutePoints((prevPoints) => {
+      if (!prevPoints.length) {
+        // se não tiver nada, cai no fluxo normal de add no final
+        // você pode chamar handleAddPoint aqui se quiser manter a lógica atual
+        return prevPoints;
+      }
+
+      const anchorIndex = prevPoints.findIndex((p) => p.id === anchorPointId);
+      if (anchorIndex === -1) {
+        // âncora não encontrada: não faz nada (ou poderia cair em add no final)
+        return prevPoints;
+      }
+
+      const loc = pointInput.location;
+
+      const stopTimeMin = Number(pointInput.stopTimeMin ?? 5);
+
+      // Aqui criamos um ponto "cru", sem se preocupar com distância/tempo.
+      // O recalcAllRoutePoints vai recalcular tudo com base nas coordenadas.
+      const newPoint: RoutePoint = {
+        id: String(loc.id),
+        order: anchorIndex + 2, // valor provisório, será reordenado no recalc
+        type: pointInput.type,
+        stopTimeMin,
+
+        distanceKm: 0,
+        cumulativeDistanceKm: 0,
+        driveTimeMin: 0,
+
+        arrivalTime: "",
+        departureTime: "",
+
+        location: {
+          id: String(loc.id),
+          name: String(loc.name ?? ""),
+          city: String(loc.city ?? ""),
+          state: String(loc.state ?? ""),
+          shortName: String(loc.shortName ?? loc.name ?? ""),
+          kind: String(loc.kind ?? "OUTRO"),
+          lat: Number(loc.lat ?? 0),
+          lng: Number(loc.lng ?? 0),
+        },
+
+        avgSpeed:
+          typeof pointInput.avgSpeed === "number"
+            ? Number(pointInput.avgSpeed)
+            : undefined,
+
+        justification: pointInput.justification ?? "",
+
+        isRestStop: !!pointInput.isRestStop,
+        isSupportPoint: !!pointInput.isSupportPoint,
+        isDriverChange: !!pointInput.isDriverChange,
+        isBoardingPoint: !!pointInput.isBoardingPoint,
+        isDropoffPoint: !!pointInput.isDropoffPoint,
+        isFreeStop: !!pointInput.isFreeStop,
+
+        // inserção no meio nunca mexe no ponto inicial;
+        // o recalcAllRoutePoints vai respeitar o isInitial já existente
+        isInitial: false,
+      };
+
+      const updated = [...prevPoints];
+      // insere DEPOIS do ponto âncora
+      updated.splice(anchorIndex + 1, 0, newPoint);
+
+      // recalcula ordem, distâncias, tempos e horários com base no ponto inicial e tripTime
+      return recalcAllRoutePoints(updated);
+    });
+  };
+
   return {
     handleLineCodeChange,
     handleAddPoint,
@@ -471,6 +546,7 @@ export function createSchemeHandlers({
     handleSetInitialPoint,
     handleMovePointUp,
     handleMovePointDown,
+    handleInsertPointAfter,
   };
 }
 

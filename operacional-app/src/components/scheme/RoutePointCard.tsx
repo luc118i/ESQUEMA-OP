@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   Trash2,
@@ -28,6 +28,7 @@ interface RoutePointCardProps {
   onMoveUp?: (id: string) => void;
   onMoveDown?: (id: string) => void;
   onInsertAfter?: (id: string) => void;
+  previousPoint?: RoutePoint | null;
 }
 
 const pointTypes = [
@@ -60,6 +61,7 @@ export function RoutePointCard({
   onMoveUp,
   onMoveDown,
   onInsertAfter,
+  previousPoint,
 }: RoutePointCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -72,27 +74,87 @@ export function RoutePointCard({
       ? Number((point.distanceKm / (point.driveTimeMin / 60)).toFixed(1))
       : 0;
 
+  let supportText: ReactNode = null;
+
+  if (index === 0) {
+    supportText = (
+      <>
+        {point.isInitial
+          ? "Ponto inicial da viagem • 0 km desde o ponto anterior • 0 km acumulados"
+          : "Primeiro ponto da rota • 0 km desde o ponto anterior • 0 km acumulados"}
+      </>
+    );
+  } else if (previousPoint) {
+    const prevCity = previousPoint.location?.city ?? "";
+    const prevState = previousPoint.location?.state ?? "";
+    const prevName = previousPoint.location?.name ?? "";
+
+    let prevLabel = "ponto anterior";
+
+    if (prevName) {
+      prevLabel = prevName;
+    } else if (prevCity || prevState) {
+      prevLabel = `${prevCity}${prevState ? " / " + prevState : ""}`;
+    }
+
+    const driveTimeStr = formatMinutesToHours(point.driveTimeMin);
+    const distanceStr = `${point.distanceKm.toFixed(1)} km`;
+    const cumulativeStr = `${point.cumulativeDistanceKm.toFixed(
+      1
+    )} km acumulados`;
+
+    supportText = (
+      <span>
+        Trecho anterior: de{" "}
+        <strong className="font-semibold text-slate-900">{prevLabel}</strong>{" "}
+        até aqui foram{" "}
+        <strong className="font-semibold text-blue-700">{distanceStr}</strong>{" "}
+        em <span className="italic">{driveTimeStr}</span> (
+        <span className="font-medium text-slate-800">{avgSpeed} km/h</span>) •{" "}
+        {cumulativeStr}
+      </span>
+    );
+  }
+
+  const isInitial = !!point.isInitial;
+
   return (
-    // ✅ group para controlar hover dos botões de mover
-    <Card className="relative border border-slate-200 overflow-hidden group">
+    // destaque extra para o ponto marcado como início da viagem
+    <Card
+      className={`relative overflow-hidden group border ${
+        isInitial
+          ? "border-blue-400 bg-blue-50/40"
+          : "border-slate-200 bg-white"
+      }`}
+    >
       {/* ===== Header do Card ===== */}
-      <div className="bg-gradient-to-r from-slate-50 to-white p-4 border-b border-slate-200">
+      <div className="bg-gradient-to-r from-slate-50/80 to-white p-4 border-b border-slate-200/70">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4 flex-1">
             <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 text-white">
               {index + 1}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-slate-900 truncate">
-                {city} / {state}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-slate-900 font-semibold truncate">
+                  {city} / {state}
+                </h3>
+
+                {isInitial && (
+                  <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                    Início da viagem
+                  </span>
+                )}
+              </div>
+
               {name && (
                 <p className="text-slate-600 text-xs truncate">{name}</p>
               )}
-              <p className="text-slate-600 text-xs mt-1">
-                {point.distanceKm.toFixed(1)} km desde o ponto anterior •{" "}
-                {point.cumulativeDistanceKm.toFixed(1)} km acumulados
-              </p>
+              {supportText && (
+                <p className="text-slate-600 text-xs mt-1 leading-relaxed">
+                  {supportText}
+                </p>
+              )}
             </div>
           </div>
 

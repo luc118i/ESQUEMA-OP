@@ -495,13 +495,12 @@ export function AddPointModal({
               variant="outline"
               type="button"
               onClick={handleSetInitialLocal}
-              // 🔴 AQUI É A ÚNICA MUDANÇA DE LÓGICA:
-              // desabilita quando não há local selecionado
-              // OU quando já existe um ponto inicial definido
-              disabled={!selectedLocation || !canSetInitial || !!initialPoint}
+              disabled={!selectedLocation || !canSetInitial}
               className="border-blue-300 text-blue-700 hover:bg-blue-50"
             >
-              Definir como ponto inicial
+              {initialPoint
+                ? "Alterar ponto inicial"
+                : "Definir como ponto inicial"}
             </Button>
           )}
 

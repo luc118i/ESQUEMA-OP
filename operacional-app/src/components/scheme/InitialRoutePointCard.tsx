@@ -12,6 +12,7 @@ interface InitialRoutePointCardProps {
   index: number;
   onUpdate: (id: string, updates: Partial<RoutePoint>) => void;
   onDelete: (id: string) => void;
+  previousPoint?: RoutePoint | null;
 }
 
 export function InitialRoutePointCard({
@@ -26,6 +27,8 @@ export function InitialRoutePointCard({
   const state = point.location?.state ?? "";
   const name = point.location?.name ?? "";
 
+  const isInitial = !!point.isInitial;
+
   return (
     <Card className="border border-slate-200 overflow-hidden">
       {/* Header do Card */}
@@ -38,9 +41,22 @@ export function InitialRoutePointCard({
 
             <div className="flex-1 min-w-0">
               {/* Cidade / UF */}
-              <h3 className="text-slate-900 truncate">
-                {city && state ? `${city} / ${state}` : "Ponto inicial"}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-slate-900 font-semibold truncate">
+                  {city && state ? `${city} / ${state}` : "Ponto inicial"}
+                </h3>
+
+                {/* Badge de contexto */}
+                {isInitial && (
+                  <span
+                    className="inline-flex items-center rounded-full px-2 py-0.5 
+               text-[10px] font-semibold 
+               bg-blue-100 text-blue-800 border border-blue-200"
+                  >
+                    Início da viagem
+                  </span>
+                )}
+              </div>
 
               {/* Nome do local (se tiver) */}
               {name && (
@@ -75,39 +91,65 @@ export function InitialRoutePointCard({
         </div>
       </div>
 
-      {/* Corpo do Card (simplificado para o ponto inicial) */}
+      {/* Corpo do Card */}
       {isExpanded && (
         <div className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Hr. Saída (início) */}
-            <div>
-              <label className="text-slate-600 text-xs mb-1.5 block">
-                Hr. Saída (início)
-              </label>
-              <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-sm">
-                {point.departureTime ? (
-                  <span className="text-slate-900">{point.departureTime}</span>
-                ) : (
-                  <span className="text-slate-400 italic">
-                    Adicione o próximo ponto para calcular o horário
-                  </span>
-                )}
+          {isInitial ? (
+            /* Modo: ponto inicial oficial da viagem */
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Hr. Saída (início) */}
+              <div>
+                <label className="text-slate-600 text-xs mb-1.5 block">
+                  Hr. Saída (início)
+                </label>
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-sm">
+                  {point.departureTime ? (
+                    <span className="text-slate-900">
+                      {point.departureTime}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 italic">
+                      Adicione o próximo ponto para calcular o horário
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Distância (fica somente no modo inicial) */}
+              <div>
+                <label className="text-slate-600 text-xs mb-1.5 block">
+                  Distância
+                </label>
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 text-sm flex items-center gap-1">
+                  <Route className="w-3.5 h-3.5 text-slate-500" />
+                  <span>{point.distanceKm.toFixed(1)} km</span>
+                </div>
               </div>
             </div>
-
-            {/* Distância (0,0 km pro primeiro, mas mantido dinâmico) */}
-            <div>
-              <label className="text-slate-600 text-xs mb-1.5 block">
-                Distância
-              </label>
-              <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-slate-900 text-sm flex items-center gap-1">
-                <Route className="w-3.5 h-3.5 text-slate-500" />
-                <span>{point.distanceKm.toFixed(1)} km</span>
+          ) : (
+            /* Modo: ponto pré-inicial */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Hr. Passagem (único campo no pré-inicial) */}
+              <div>
+                <label className="text-slate-600 text-xs mb-1.5 block">
+                  Hr. Saida
+                </label>
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-md text-sm">
+                  {point.departureTime ? (
+                    <span className="text-slate-900">
+                      {point.departureTime}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 italic">
+                      Horário calculado a partir do início da viagem
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Campo Tipo removido para o primeiro card */}
-          </div>
+              {/* Nada mais aqui! Distância removida completamente */}
+            </div>
+          )}
         </div>
       )}
     </Card>

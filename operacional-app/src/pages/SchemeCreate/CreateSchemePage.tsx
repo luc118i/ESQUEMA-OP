@@ -22,7 +22,7 @@ interface CreateSchemePageProps {
 
 type Direction = "ida" | "volta";
 
-type ModalMode = "add" | "editInitial" | null;
+type ModalMode = "add" | "editInitial" | "insertAfter" | null;
 
 export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
   const [lineCode, setLineCode] = useState("");
@@ -32,6 +32,9 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
   const [routePoints, setRoutePoints] = useState<RoutePoint[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
+  const [insertAfterPointId, setInsertAfterPointId] = useState<string | null>(
+    null
+  );
 
   const {
     handleLineCodeChange,
@@ -41,6 +44,7 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
     handleSetInitialPoint,
     handleMovePointUp,
     handleMovePointDown,
+    handleInsertPointAfter,
   } = createSchemeHandlers({
     routePoints,
     setRoutePoints,
@@ -67,13 +71,19 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
     ? `${selectedLine.ufOrigem} ${selectedLine.municipioOrigem} → ${selectedLine.ufDestino} ${selectedLine.municipioDestino}`
     : "";
 
+  // ponto inicial REAL da rota (se já foi definido)
+  const currentInitialPoint = routePoints.find((p) => p.isInitial) ?? null;
+
   // ✅ ponto inicial / final conforme sentido
   const initialCity =
-    direction === "ida"
+    currentInitialPoint?.location?.city ??
+    (direction === "ida"
       ? selectedLine?.municipioOrigem
-      : selectedLine?.municipioDestino;
+      : selectedLine?.municipioDestino);
+
   const initialState =
-    direction === "ida" ? selectedLine?.ufOrigem : selectedLine?.ufDestino;
+    currentInitialPoint?.location?.state ??
+    (direction === "ida" ? selectedLine?.ufOrigem : selectedLine?.ufDestino);
 
   const finalCity =
     direction === "ida"
@@ -97,6 +107,26 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
     if (tripTime) {
       handleSetInitialPoint(pointId, tripTime);
     }
+  };
+
+  const handleConfirmPointFromModal = (pointInput: any) => {
+    if (modalMode === "insertAfter" && insertAfterPointId) {
+      // inserir entre dois pontos
+      handleInsertPointAfter(insertAfterPointId, pointInput);
+    } else if (modalMode === "add") {
+      // fluxo atual de adicionar no final
+      handleAddPoint(pointInput);
+    } else if (modalMode === "editInitial") {
+      // aqui entra o fluxo específico de edição do ponto inicial
+      // (se você já tiver esse comportamento, reaproveita)
+      // ex.: só atualiza dados e deixa horários serem recalculados depois
+      handleUpdatePoint(pointInput.id, pointInput);
+    }
+
+    // em qualquer caso, fecha modal e limpa contexto
+    setIsModalOpen(false);
+    setModalMode(null);
+    setInsertAfterPointId(null);
   };
 
   return (
@@ -224,34 +254,26 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                 <Label className="text-slate-600">Pontos principais</Label>
 
                 <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Ponto inicial */}
                   <button
                     type="button"
                     className="text-left p-4 bg-blue-50 border border-blue-200 rounded-lg hover:border-blue-300 transition flex flex-col justify-between"
                     onClick={() => {
-                      setModalMode("editInitial"); // ← define o modo como edição de ponto inicial
-                      setIsModalOpen(true); // ← abre o modal
+                      setModalMode("editInitial");
+                      setIsModalOpen(true);
                     }}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs font-semibold uppercase text-blue-700">
                         Ponto inicial
                       </span>
-                      <span
-                        className="
-                                    text-xs text-blue-700 underline 
-                                    cursor-pointer 
-                                    hover:text-blue-900 
-                                    transition-colors
-                                  "
-                      >
-                        Editar
+                      <span className="text-xs text-blue-700 underline cursor-pointer hover:text-blue-900 transition-colors">
+                        {currentInitialPoint ? "Editar" : "Definir"}
                       </span>
                     </div>
 
                     <p className="text-blue-900 font-medium">
                       {initialCity && initialState
-                        ? `${initialCity}`
+                        ? initialCity
                         : "Definir ponto inicial"}
                     </p>
 
@@ -319,21 +341,25 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                       point={point}
                       index={index}
                       onUpdate={handleUpdatePoint}
-                      onDelete={handleDeletePoint} // << CORRIGIDO
+                      onDelete={handleDeletePoint}
+                      // aqui não precisa de previousPoint, o primeiro nunca tem trecho anterior
                     />
                   ) : (
                     <RoutePointCard
                       key={point.id}
                       point={point}
                       index={index}
+                      previousPoint={routePoints[index - 1]}
                       alerts={anttAlertsByPointId[point.id] ?? []}
                       onUpdate={handleUpdatePoint}
-                      onDelete={handleDeletePoint} // << CORRIGIDO
-                      onMoveUp={() => handleMovePointUp(point.id)}
-                      onMoveDown={() => handleMovePointDown(point.id)}
-                      onInsertAfter={() =>
-                        console.log("inserir depois de", point.id)
-                      }
+                      onDelete={handleDeletePoint}
+                      onMoveUp={handleMovePointUp}
+                      onMoveDown={handleMovePointDown}
+                      onInsertAfter={(id) => {
+                        setModalMode("insertAfter");
+                        setInsertAfterPointId(id);
+                        setIsModalOpen(true);
+                      }}
                     />
                   )
                 )}
@@ -385,11 +411,17 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
           // chamado pelo próprio AddPointModal.handleClose()
           setIsModalOpen(false);
           setModalMode(null);
+          setInsertAfterPointId(null);
         }}
-        onAdd={(point) => {
-          // só regra de negócio:
-          // adicionar ponto na rota
-          handleAddPoint(point);
+        onAdd={async (pointFromModal) => {
+          if (modalMode === "insertAfter" && insertAfterPointId) {
+            // inserir entre dois pontos
+            handleInsertPointAfter(insertAfterPointId, pointFromModal);
+          } else {
+            // fluxo normal: adicionar no final
+            await handleAddPoint(pointFromModal);
+          }
+          // NÃO fecha aqui: o próprio modal chama onClose() via handleClose()
         }}
         onSetInitial={async (pointFromModal) => {
           const locId = String(pointFromModal.location.id);
@@ -416,7 +448,7 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
           // não precisa mais mexer em isModalOpen/modalMode aqui,
           // o próprio modal já chama handleClose() depois de onSetInitial
         }}
-        canSetInitial={!!tripTime}
+        canSetInitial={modalMode === "editInitial" && !!tripTime}
         initialPoint={routePoints.find((p) => p.isInitial) ?? null}
       />
     </div>
