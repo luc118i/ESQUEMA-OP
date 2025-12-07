@@ -246,7 +246,7 @@ export function createSchemeHandlers({
         current.arrivalTime = toTimeString(arrivalCurrentMin);
       }
 
-      return points;
+      return recalcAllRoutePoints(points);
     });
   };
 
@@ -368,7 +368,10 @@ export function createSchemeHandlers({
       isInitial: false,
     };
 
-    setRoutePoints((prev) => [...prev, newPoint]);
+    setRoutePoints((prev) => {
+      const updated = [...prev, newPoint];
+      return recalcAllRoutePoints(updated);
+    });
   };
 
   // =====================================
@@ -412,7 +415,7 @@ export function createSchemeHandlers({
         newPoints[i] = current;
       }
 
-      return newPoints;
+      return recalcAllRoutePoints(newPoints);
     });
   };
 
