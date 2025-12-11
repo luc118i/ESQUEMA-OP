@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { ArrowLeft, Plus, Save, Map, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,22 @@ import { createSchemeHandlers, type Line } from "./createSchemeHandlers";
 import { InitialRoutePointCard } from "@/components/scheme/InitialRoutePointCard";
 
 import { computeANTTAlertsForRoute } from "@/lib/anttRules";
+import { useSaveScheme } from "@/hooks/useSaveScheme";
+
+import { mapToOperationalScheme } from "@/lib/mapToOperationalScheme";
+import type { OperationalScheme } from "@/types/scheme";
+import { API_URL } from "@/services/api";
 
 interface CreateSchemePageProps {
   onBack: () => void;
 }
+
+import type {
+  SchemeDraft,
+  Direction as DraftDirection,
+} from "@/services/schemes/saveScheme";
+
+import { findSchemeByKey } from "@/services/schemes/saveScheme";
 
 type Direction = "ida" | "volta";
 
@@ -35,7 +47,11 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
   const [insertAfterPointId, setInsertAfterPointId] = useState<string | null>(
     null
   );
+  const [editingSchemeId, setEditingSchemeId] = useState<string | null>(null);
+  const [isLoadingExisting, setIsLoadingExisting] = useState(false);
+  const lookupTimeoutRef = useRef<number | null>(null);
 
+  const { isSaving, error, save } = useSaveScheme();
   const {
     handleLineCodeChange,
     handleAddPoint,
@@ -96,38 +112,226 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
     () => computeANTTAlertsForRoute(routePoints),
     [routePoints]
   );
-  const handleAddPointAsInitial = async (pointInput: any) => {
-    // 1) adiciona normalmente (distância, driveTime, etc.)
-    await handleAddPoint(pointInput);
 
-    // 2) usa o id do local (que é o mesmo id do RoutePoint)
-    const pointId = String(pointInput.location.id);
-
-    // 3) aplica a regra de ponto inicial, se houver horário de viagem
-    if (tripTime) {
-      handleSetInitialPoint(pointId, tripTime);
+  // 🔍 Busca orgânica por esquema existente (linha + sentido + horário)
+  useEffect(() => {
+    // Se ainda não tem os três campos preenchidos, não busca
+    if (!lineCode || !direction || !tripTime) {
+      setEditingSchemeId(null);
+      setIsLoadingExisting(false);
+      // opcional: se quiser limpar a tela quando mudar a configuração:
+      // setRoutePoints([]);
+      return;
     }
-  };
 
-  const handleConfirmPointFromModal = (pointInput: any) => {
+    // Limpa timeout anterior (debounce)
+    if (lookupTimeoutRef.current !== null) {
+      window.clearTimeout(lookupTimeoutRef.current);
+    }
+
+    // Debounce de ~400ms para não bater no backend a cada tecla
+    lookupTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        setIsLoadingExisting(true);
+
+        // 1) Verifica se existe esquema com essa combinação
+        const existing = await findSchemeByKey(
+          lineCode,
+          direction as DraftDirection,
+          tripTime
+        );
+
+        if (!existing) {
+          // Não existe -> novo esquema
+          setEditingSchemeId(null);
+          // Se quiser, também pode limpar os pontos aqui:
+          // setRoutePoints([]);
+          return;
+        }
+
+        // 2) Já existe esquema com essa combinação -> modo edição
+        setEditingSchemeId(existing.id);
+
+        // 3) Carrega o esquema completo + pontos
+        const operational = await loadOperationalSchemeById(existing.id);
+
+        // 4) Joga os pontos do esquema carregado na tela de criação/edição
+        setRoutePoints(operational.routePoints ?? []);
+
+        // Opcional: garantir que o horário da tela fique igual ao salvo
+        if (operational.tripTime) {
+          setTripTime(operational.tripTime);
+        }
+      } catch (err) {
+        console.error(
+          "[CreateSchemePage] erro ao buscar/carregar esquema por chave:",
+          err
+        );
+        setEditingSchemeId(null);
+        // também pode exibir um erro visual se quiser
+      } finally {
+        setIsLoadingExisting(false);
+      }
+    }, 400) as unknown as number;
+
+    // Cleanup se os deps mudarem rápido
+    return () => {
+      if (lookupTimeoutRef.current !== null) {
+        window.clearTimeout(lookupTimeoutRef.current);
+      }
+    };
+  }, [lineCode, direction, tripTime]);
+
+  /**
+   * Confirmação genérica de ponto vindo do modal:
+   * - "add": adiciona no final
+   * - "insertAfter": insere após um ponto existente
+   * - "editInitial": atualiza dados do ponto inicial
+   *
+   * O fechamento do modal continua sendo responsabilidade
+   * do próprio AddPointModal (via onClose).
+   */
+  const handleConfirmPointFromModal = async (pointInput: any) => {
     if (modalMode === "insertAfter" && insertAfterPointId) {
-      // inserir entre dois pontos
       handleInsertPointAfter(insertAfterPointId, pointInput);
     } else if (modalMode === "add") {
-      // fluxo atual de adicionar no final
-      handleAddPoint(pointInput);
+      await handleAddPoint(pointInput);
     } else if (modalMode === "editInitial") {
-      // aqui entra o fluxo específico de edição do ponto inicial
-      // (se você já tiver esse comportamento, reaproveita)
-      // ex.: só atualiza dados e deixa horários serem recalculados depois
+      // fluxo específico de edição do ponto inicial
       handleUpdatePoint(pointInput.id, pointInput);
     }
-
-    // em qualquer caso, fecha modal e limpa contexto
-    setIsModalOpen(false);
-    setModalMode(null);
-    setInsertAfterPointId(null);
   };
+
+  /**
+   * Fluxo para "Definir como ponto inicial" vindo do modal:
+   * - se o ponto já existe na rota, só recalcula horários a partir dele;
+   * - se não existe, adiciona e depois marca como inicial.
+   */
+  const handleAddPointAsInitial = async (pointFromModal: any) => {
+    const locId = String(pointFromModal.location.id);
+
+    if (!tripTime) {
+      // opcional: toast avisando que precisa definir "Horário da Viagem"
+      return;
+    }
+
+    // 1) verifica se o ponto já existe
+    const existing = routePoints.find(
+      (p) => p.location?.id === locId || p.id === locId
+    );
+
+    if (existing) {
+      // já existe: só recalcula horários a partir dele
+      handleSetInitialPoint(existing.id, tripTime);
+    } else {
+      // NÃO existe: primeiro adiciona, depois marca como inicial
+      await handleAddPoint(pointFromModal);
+      handleSetInitialPoint(locId, tripTime);
+    }
+  };
+
+  const handleSaveScheme = async () => {
+    if (!selectedLine || !direction || !tripTime || routePoints.length === 0) {
+      return;
+    }
+
+    // 1) tenta descobrir se já existe esquema com essa chave
+    let existingSchemeId: string | undefined;
+
+    try {
+      const existing = await findSchemeByKey(
+        lineCode,
+        direction as "ida" | "volta",
+        tripTime
+      );
+      if (existing) {
+        existingSchemeId = existing.id;
+      }
+    } catch (err) {
+      console.error(
+        "[CreateSchemePage] erro ao verificar esquema existente:",
+        err
+      );
+      // se quiser, pode dar um toast e abortar aqui
+    }
+
+    // 2) Origem/destino a partir dos pontos
+    const firstPoint = routePoints[0];
+    const lastPoint = routePoints[routePoints.length - 1];
+
+    const originLocationId = firstPoint?.location?.id;
+    const destinationLocationId = lastPoint?.location?.id;
+
+    if (!originLocationId || !destinationLocationId) {
+      console.error(
+        "[CreateSchemePage] Não foi possível determinar origem/destino a partir dos pontos"
+      );
+      return;
+    }
+
+    const draft: SchemeDraft = {
+      schemeId: existingSchemeId, // se existir, edita; se não, cria
+
+      lineCode,
+      lineName:
+        lineDisplayName ||
+        origemDestinoText ||
+        lineCode ||
+        "Esquema operacional",
+
+      originLocationId,
+      destinationLocationId,
+
+      direction: direction as "ida" | "volta",
+      tripTime,
+      routePoints,
+    };
+
+    const result = await save(draft);
+
+    if (result && result.schemeId) {
+      onBack();
+    }
+  };
+
+  async function loadOperationalSchemeById(
+    id: string
+  ): Promise<OperationalScheme> {
+    const schemeUrl = `${API_URL}/schemes/${id}`;
+    const pointsUrl = `${API_URL}/scheme-points/schemes/${id}/points`;
+    const summaryUrl = `${API_URL}/schemes/${id}/summary`;
+
+    const [schemeRes, pointsRes, summaryRes] = await Promise.all([
+      fetch(schemeUrl),
+      fetch(pointsUrl),
+      fetch(summaryUrl),
+    ]);
+
+    if (!schemeRes.ok) {
+      throw new Error(
+        `Erro ao carregar esquema: ${schemeRes.status} ${schemeRes.statusText}`
+      );
+    }
+
+    if (!pointsRes.ok) {
+      throw new Error(
+        `Erro ao carregar pontos do esquema: ${pointsRes.status} ${pointsRes.statusText}`
+      );
+    }
+
+    const schemeJson = await schemeRes.json();
+    const pointsJson = await pointsRes.json();
+    const summaryJson = summaryRes.ok ? await summaryRes.json() : undefined;
+
+    // Usa o mesmo mapper da SchemeDetailPage
+    const operational = mapToOperationalScheme(
+      schemeJson,
+      pointsJson,
+      summaryJson
+    );
+
+    return operational;
+  }
 
   return (
     <div className="min-h-screen">
@@ -195,6 +399,13 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
           </div>
 
           {/* Informações Carregadas da Linha */}
+
+          {editingSchemeId && (
+            <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Já existe um esquema para esta linha, sentido e horário. Você está
+              editando esse esquema.
+            </div>
+          )}
           {canShowLineDetails && selectedLine && (
             <div className="mt-6 pt-6 border-t border-slate-200 space-y-4">
               {/* Nome da linha / Origem-Destino */}
@@ -249,7 +460,7 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                 </div>
               </div>
 
-              {/* Ponto Inicial + Ponto Final (apenas display por enquanto) */}
+              {/* Ponto Inicial + Ponto Final */}
               <div className="mt-4">
                 <Label className="text-slate-600">Pontos principais</Label>
 
@@ -317,6 +528,7 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                   setIsModalOpen(true);
                 }}
                 className="bg-blue-600 hover:bg-blue-700"
+                disabled={isLoadingExisting}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Adicionar Ponto
@@ -324,14 +536,26 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
             </div>
 
             {routePoints.length === 0 ? (
-              <div className="text-center py-12 text-slate-500">
-                <Map className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>Nenhum ponto adicionado ainda</p>
-                <p className="text-sm mt-1">
-                  Clique em &quot;Adicionar Ponto&quot; para começar a montar a
-                  rota
-                </p>
-              </div>
+              isLoadingExisting ? (
+                // ⏳ Estado de carregamento enquanto busca esquema existente
+                <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                  <div className="h-8 w-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin mb-3" />
+                  <p className="text-sm text-slate-600">
+                    Carregando esquema existente para esta linha, sentido e
+                    horário...
+                  </p>
+                </div>
+              ) : (
+                // 🧩 Empty state padrão quando NÃO está carregando nada
+                <div className="text-center py-12 text-slate-500">
+                  <Map className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                  <p>Nenhum ponto adicionado ainda</p>
+                  <p className="text-sm mt-1">
+                    Clique em &quot;Adicionar Ponto&quot; para começar a montar
+                    a rota
+                  </p>
+                </div>
+              )
             ) : (
               <div className="space-y-4">
                 {routePoints.map((point, index) =>
@@ -342,7 +566,6 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                       index={index}
                       onUpdate={handleUpdatePoint}
                       onDelete={handleDeletePoint}
-                      // aqui não precisa de previousPoint, o primeiro nunca tem trecho anterior
                     />
                   ) : (
                     <RoutePointCard
@@ -385,21 +608,18 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
                 <X className="w-4 h-4 mr-2" />
                 Cancelar
               </Button>
-              <Button
-                variant="outline"
-                className="border-blue-300 text-blue-700 hover:bg-blue-50"
-              >
-                <Map className="w-4 h-4 mr-2" />
-                Visualizar no Mapa
-              </Button>
+
               <Button
                 className="bg-green-600 hover:bg-green-700"
-                disabled={!canSaveScheme}
+                disabled={!canSaveScheme || isSaving}
+                onClick={handleSaveScheme}
               >
                 <Save className="w-4 h-4 mr-2" />
-                Salvar Esquema
+                {isSaving ? "Salvando..." : "Salvar Esquema"}
               </Button>
             </div>
+
+            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
           </Card>
         )}
       </div>
@@ -408,46 +628,12 @@ export function CreateSchemePage({ onBack }: CreateSchemePageProps) {
       <AddPointModal
         isOpen={isModalOpen}
         onClose={() => {
-          // chamado pelo próprio AddPointModal.handleClose()
           setIsModalOpen(false);
           setModalMode(null);
           setInsertAfterPointId(null);
         }}
-        onAdd={async (pointFromModal) => {
-          if (modalMode === "insertAfter" && insertAfterPointId) {
-            // inserir entre dois pontos
-            handleInsertPointAfter(insertAfterPointId, pointFromModal);
-          } else {
-            // fluxo normal: adicionar no final
-            await handleAddPoint(pointFromModal);
-          }
-          // NÃO fecha aqui: o próprio modal chama onClose() via handleClose()
-        }}
-        onSetInitial={async (pointFromModal) => {
-          const locId = String(pointFromModal.location.id);
-
-          if (!tripTime) {
-            // opcional: toast avisando que precisa definir "Horário da Viagem"
-            return;
-          }
-
-          // 1) verifica se o ponto já existe
-          const existing = routePoints.find(
-            (p) => p.location?.id === locId || p.id === locId
-          );
-
-          if (existing) {
-            // já existe: só recalcula horários a partir dele
-            handleSetInitialPoint(existing.id, tripTime);
-          } else {
-            // NÃO existe: primeiro adiciona, depois marca como inicial
-            await handleAddPoint(pointFromModal);
-            handleSetInitialPoint(locId, tripTime);
-          }
-
-          // não precisa mais mexer em isModalOpen/modalMode aqui,
-          // o próprio modal já chama handleClose() depois de onSetInitial
-        }}
+        onAdd={handleConfirmPointFromModal}
+        onSetInitial={handleAddPointAsInitial}
         canSetInitial={modalMode === "editInitial" && !!tripTime}
         initialPoint={routePoints.find((p) => p.isInitial) ?? null}
       />

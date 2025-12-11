@@ -9,13 +9,15 @@ import {
 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
-import type { OperationalScheme } from "@/types/scheme";
+import type { OperationalScheme, RoutePoint } from "@/types/scheme";
+import type { LinhaMeta } from "@/types/linhas";
 
 interface DetailSummaryProps {
-  scheme: OperationalScheme;
+  scheme: OperationalScheme & { routePoints: RoutePoint[] };
+  linhaMeta?: LinhaMeta;
 }
 
-export function DetailSummary({ scheme }: DetailSummaryProps) {
+export function DetailSummary({ scheme, linhaMeta }: DetailSummaryProps) {
   // 🔢 Valores vindos do summary da API (mapToOperationalScheme)
   const totalKm = scheme.totalKm ?? 0;
   const totalStops = scheme.totalStops ?? 0;
@@ -25,6 +27,7 @@ export function DetailSummary({ scheme }: DetailSummaryProps) {
   const totalStopMinutes = scheme.totalStopMinutes ?? 0;
   const totalDurationMinutes =
     scheme.totalDurationMinutes ?? totalTravelMinutes + totalStopMinutes;
+  const totalPcs = scheme.totalPontos ?? 0;
 
   const averageSpeedKmH =
     scheme.averageSpeedKmH ??
@@ -61,7 +64,17 @@ export function DetailSummary({ scheme }: DetailSummaryProps) {
 
   return (
     <Card className="p-6 bg-gradient-to-br from-white to-slate-50 shadow-md border-slate-200">
-      <h2 className="text-slate-900 mb-6">Resumo da Viagem</h2>
+      <h2 className="text-slate-900 mb-1">Resumo da Viagem</h2>
+
+      {/* 🆕 Mesclagem banco + JSON (Empresa + Prefixo) */}
+      {linhaMeta && (
+        <p className="text-xs text-slate-500 mb-5">
+          {linhaMeta["Nome Empresa"]} • Prefixo{" "}
+          <span className="font-semibold text-slate-800">
+            {linhaMeta.Prefixo}
+          </span>
+        </p>
+      )}
 
       {/* Cards de Métricas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -104,8 +117,20 @@ export function DetailSummary({ scheme }: DetailSummaryProps) {
               <MapPin className="w-5 h-5 text-purple-600" />
             </div>
           </div>
-          <p className="text-slate-600 text-sm mb-1">Paradas Esperadas</p>
-          <p className="text-slate-900 text-2xl">{expectedStops}</p>
+
+          <p className="text-slate-600 text-sm mb-1">Paradas em PCs</p>
+
+          {/* Número principal: PCs REALIZADOS */}
+          <p className="text-slate-900 text-2xl">{totalPcs}</p>
+
+          {/* Texto auxiliar: contexto do esperado */}
+          <p className="text-slate-600 text-sm mt-1">
+            realizado{totalPcs !== 1 ? "s" : ""} de{" "}
+            <span className="font-semibold">{expectedStops}</span> esperado
+            {expectedStops !== 1 ? "s" : ""}.
+          </p>
+
+          {/* Regra de cálculo */}
           <p className="text-slate-500 text-xs mt-1">
             ({totalKm.toFixed(0)} km / 495)
           </p>

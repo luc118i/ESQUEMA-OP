@@ -111,6 +111,7 @@ export interface SchemeWithLocations {
   created_at: string;
   updated_at?: string | null;
   trip_time?: string | null;
+  direction?: "ida" | "volta" | null;
 
   origem_location?: SchemeLocation | null;
   destino_location?: SchemeLocation | null;
@@ -150,3 +151,36 @@ export interface SchemeListItem {
   scheme: SchemeWithLocations;
   summary: SchemeSummary;
 }
+
+export type FilterMode = "all" | "recent" | "favorites";
+
+export interface SchemeCardSnapshot {
+  // ID base para abrir o esquema completo
+  schemeId: string;
+
+  // Linha (vão ser usados no card e na busca)
+  lineCode: string; // scheme.codigo
+  lineName: string; // scheme.nome
+
+  // Origem / destino (cidade + UF) – também usados na busca
+  origin: string;
+  originState: string;
+  destination: string;
+  destinationState: string;
+
+  // Tempo total estimado da viagem (se você quiser usar no card)
+  tripTime: string;
+
+  // Métricas principais (puxadas do summary)
+  totalKm: number;
+  totalStops: number; // alias para totalParadas
+  totalPoints: number; // totalPontos
+
+  // Para ordenação/exibição
+  createdAt: string; // scheme.created_at
+  updatedAt?: string; // scheme.updated_at
+  direction: "Ida" | "Volta";
+}
+
+export const RECENT_SCHEMES_KEY = "operationalPanel:recentSchemes";
+export const FAVORITE_SCHEMES_KEY = "operationalPanel:favorites";

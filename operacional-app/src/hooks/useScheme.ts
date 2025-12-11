@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { OperationalScheme } from "@/types/scheme";
 import { mapToOperationalScheme } from "@/lib/mapToOperationalScheme";
+import { API_URL } from "@/services/api";
 
 export function useScheme(id: string) {
   const [data, setData] = useState<OperationalScheme | null>(null);
@@ -14,17 +15,14 @@ export function useScheme(id: string) {
         setLoading(true);
         setError("");
 
-        const apiBase = "http://localhost:3333";
-
-        const schemeUrl = `${apiBase}/schemes/${id}`;
-        const pointsUrl = `${apiBase}/scheme-points/schemes/${id}/points`;
-        const summaryUrl = `${apiBase}/schemes/${id}/summary`;
+        const schemeUrl = `${API_URL}/schemes/${id}`;
+        const pointsUrl = `${API_URL}/scheme-points/schemes/${id}/points`;
+        const summaryUrl = `${API_URL}/schemes/${id}/summary`;
 
         console.log("[useScheme] schemeUrl:", schemeUrl);
         console.log("[useScheme] pointsUrl:", pointsUrl);
         console.log("[useScheme] summaryUrl:", summaryUrl);
 
-        // busca tudo em paralelo
         const [schemeRes, pointsRes, summaryRes] = await Promise.all([
           fetch(schemeUrl),
           fetch(pointsUrl),
@@ -32,6 +30,8 @@ export function useScheme(id: string) {
         ]);
 
         if (!schemeRes.ok) {
+          const txt = await schemeRes.text();
+          console.error("[useScheme] erro scheme:", schemeRes.status, txt);
           throw new Error("Erro ao carregar esquema");
         }
         const schemeJson = await schemeRes.json();
@@ -41,9 +41,11 @@ export function useScheme(id: string) {
         let pointsJson: any[] = [];
         if (pointsRes.status === 404) {
           console.warn(
-            "[useScheme] /scheme-points/scheme/:id retornou 404, usando []"
+            "[useScheme] /scheme-points/schemes/:id retornou 404, usando []"
           );
         } else if (!pointsRes.ok) {
+          const txt = await pointsRes.text();
+          console.error("[useScheme] erro points:", pointsRes.status, txt);
           throw new Error("Erro ao carregar pontos");
         } else {
           pointsJson = await pointsRes.json();
@@ -51,6 +53,8 @@ export function useScheme(id: string) {
         console.log("[useScheme] pointsJson:", pointsJson);
 
         if (!summaryRes.ok) {
+          const txt = await summaryRes.text();
+          console.error("[useScheme] erro summary:", summaryRes.status, txt);
           throw new Error("Erro ao carregar resumo");
         }
         const summaryJson = await summaryRes.json();
@@ -64,7 +68,7 @@ export function useScheme(id: string) {
 
         setData(mapped);
       } catch (err: any) {
-        console.error(err);
+        console.error("[useScheme] erro:", err);
         setError(err.message || "Erro desconhecido");
       } finally {
         setLoading(false);

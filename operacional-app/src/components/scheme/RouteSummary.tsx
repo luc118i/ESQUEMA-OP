@@ -1,16 +1,43 @@
 // src/components/scheme/RouteSummary.tsx
-import { Clock, Route, MapPin, AlertCircle, CheckCircle } from "lucide-react";
+import {
+  Clock,
+  Route,
+  MapPin,
+  AlertCircle,
+  CheckCircle,
+  Landmark,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import type { RoutePoint } from "@/types/scheme";
 
 interface RouteSummaryProps {
   routePoints: RoutePoint[];
   tripStartTime: string;
+
+  // Infos já mescladas (banco + JSON) vindo de fora
+  originCity?: string;
+  originState?: string;
+  destinationCity?: string;
+  destinationState?: string;
+  originInstallation?: string;
+  destinationInstallation?: string;
+  companyName?: string; // "Nome Empresa"
+  prefix?: string; // "Prefixo" (do banco/JSON)
+  status?: string; // "Situação"
 }
 
 export function RouteSummary({
   routePoints,
   tripStartTime,
+  originCity,
+  originState,
+  destinationCity,
+  destinationState,
+  originInstallation,
+  destinationInstallation,
+  companyName,
+  prefix,
+  status,
 }: RouteSummaryProps) {
   // Totais baseados na estrutura REAL do RoutePoint:
   // - stopTimeMin: tempo parado no ponto (min)
@@ -42,11 +69,73 @@ export function RouteSummary({
       ? ((totalDistance / totalTravelTime) * 60).toFixed(1)
       : "0.0";
 
+  const statusStyles = getStatusStyles(status);
+
   return (
     <Card className="p-6 bg-gradient-to-br from-slate-50 to-white border-slate-200 shadow-sm">
-      <h2 className="text-slate-900 mb-4">Resumo da Viagem</h2>
+      <h2 className="text-slate-900 mb-3">Resumo da Viagem</h2>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* Bloco de contexto da linha / empresa */}
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+            {companyName || "Empresa não informada"}
+          </p>
+          <p className="text-sm text-slate-600">
+            Prefixo{" "}
+            <span className="font-semibold text-slate-900">
+              {prefix || "--"}
+            </span>
+          </p>
+        </div>
+
+        {status && (
+          <span
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${statusStyles.bg} ${statusStyles.text} ${statusStyles.border}`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${statusStyles.dot}`}
+              aria-hidden="true"
+            />
+            {status}
+          </span>
+        )}
+      </div>
+
+      {/* Bloco de rota: municípios + instalações */}
+      {(originCity || destinationCity) && (
+        <div className="mb-6 space-y-1">
+          {/* Linha 1 - Municípios */}
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-800">
+            <MapPin className="h-4 w-4 text-slate-500" />
+            <span>
+              {originCity || "Origem não informada"}
+              {originState ? ` (${originState})` : ""} &rarr{" "}
+              {destinationCity || "Destino não informado"}
+              {destinationState ? ` (${destinationState})` : ""}
+            </span>
+          </div>
+
+          {/* Linha 2 - Instalações */}
+          {(originInstallation || destinationInstallation) && (
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Landmark className="h-4 w-4" />
+              <span
+                className="truncate"
+                title={`${originInstallation || "Origem não informada"} → ${
+                  destinationInstallation || "Destino não informado"
+                }`}
+              >
+                {originInstallation || "Origem não informada"} &rarr{" "}
+                {destinationInstallation || "Destino não informado"}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Métricas principais */}
+      <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2 lg:grid-cols-4">
         {/* Tempo de Paradas */}
         <div className="p-4 bg-white border border-slate-200 rounded-lg">
           <div className="flex items-center gap-3 mb-2">
@@ -267,4 +356,47 @@ function checkANTTCompliance(routePoints: RoutePoint[]): ANTTCheck[] {
   }
 
   return checks;
+}
+
+// Helper para estilos do badge de situação
+function getStatusStyles(status?: string) {
+  const base = {
+    bg: "bg-slate-50",
+    text: "text-slate-700",
+    border: "border-slate-200",
+    dot: "bg-slate-400",
+  };
+
+  if (!status) return base;
+
+  const normalized = status.toLowerCase();
+
+  if (normalized.includes("ativa")) {
+    return {
+      bg: "bg-emerald-50",
+      text: "text-emerald-800",
+      border: "border-emerald-200",
+      dot: "bg-emerald-500",
+    };
+  }
+
+  if (normalized.includes("susp")) {
+    return {
+      bg: "bg-amber-50",
+      text: "text-amber-800",
+      border: "border-amber-200",
+      dot: "bg-amber-500",
+    };
+  }
+
+  if (normalized.includes("inativa") || normalized.includes("baixada")) {
+    return {
+      bg: "bg-slate-100",
+      text: "text-slate-700",
+      border: "border-slate-300",
+      dot: "bg-slate-500",
+    };
+  }
+
+  return base;
 }

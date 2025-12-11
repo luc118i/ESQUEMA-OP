@@ -1,6 +1,6 @@
 // src/hooks/useSchemeDetail.ts
 import { useEffect, useState } from "react";
-import type { OperationalScheme } from "@/types/scheme";
+import type { OperationalScheme, SchemeSummary } from "@/types/scheme";
 import { mapToOperationalScheme } from "@/lib/mapToOperationalScheme";
 
 interface ApiSchemeSummary {
@@ -31,7 +31,7 @@ export function useSchemeDetail(schemeId: string | null) {
 
         const [schemeRes, pointsRes, summaryRes] = await Promise.all([
           fetch(`${baseUrl}/schemes/${schemeId}`),
-          fetch(`${baseUrl}/scheme-points/scheme/${schemeId}`),
+          fetch(`${baseUrl}/scheme-points/schemes/${schemeId}/points`),
           fetch(`${baseUrl}/schemes/${schemeId}/summary`),
         ]);
 
@@ -40,7 +40,7 @@ export function useSchemeDetail(schemeId: string | null) {
 
         const scheme = await schemeRes.json();
         const points = await pointsRes.json();
-        const summary: ApiSchemeSummary | undefined = summaryRes.ok
+        const summary: SchemeSummary | undefined = summaryRes.ok
           ? await summaryRes.json()
           : undefined;
 

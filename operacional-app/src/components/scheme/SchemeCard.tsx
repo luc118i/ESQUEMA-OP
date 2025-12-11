@@ -3,21 +3,43 @@ import { Clock, MapPin, Route, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-import type { OperationalScheme } from "@/types/scheme";
+import type { OperationalScheme, SchemeSummary } from "@/types/scheme";
+import type { LinhaMeta } from "@/types/linhas";
+import linhasJson from "@/data/lista-de-linhas.json";
 
 interface SchemeCardProps {
   scheme: OperationalScheme;
+  summary?: SchemeSummary;
   onClick: () => void;
 }
 
-export function SchemeCard({ scheme, onClick }: SchemeCardProps) {
+export function SchemeCard({ scheme, summary, onClick }: SchemeCardProps) {
+  // 🔎 Meta ANTT (JSON) para essa linha
+  const linhas = linhasJson as LinhaMeta[];
+
+  // ⚠️ Se o identificador no JSON não for Prefixo, ajuste aqui
+  const linhaMeta = linhas.find((l) => l.Prefixo === scheme.lineCode);
+
+  // 🧠 Regra:
+  // - Se tiver JSON: usa município + UF do JSON
+  // - Se não tiver JSON: usa só cidades do banco, SEM UF (pra não inventar combinação esquisita)
+  const origemLabel = linhaMeta
+    ? `${linhaMeta["Município Origem"]} (${linhaMeta["UF Origem"]})`
+    : scheme.origin || "Origem não informada";
+
+  const destinoLabel = linhaMeta
+    ? `${linhaMeta["Município Destino"]} (${linhaMeta["UF Destino"]})`
+    : scheme.destination || "Destino não informada";
+
   // Tenta usar o totalKm resumido; se não tiver, usa a distância acumulada do último ponto
   const lastPoint = scheme.routePoints[scheme.routePoints.length - 1] ?? null;
 
   const totalKm =
-    (typeof scheme.totalKm === "number" && scheme.totalKm > 0
+    typeof summary?.totalKm === "number"
+      ? summary.totalKm
+      : typeof scheme.totalKm === "number"
       ? scheme.totalKm
-      : lastPoint?.cumulativeDistanceKm) ?? 0;
+      : lastPoint?.cumulativeDistanceKm ?? 0;
 
   // Paradas: se vier de totalStops, usa; senão, conta nos pontos (PP e PA)
   const stopsFromPoints = scheme.routePoints.filter(
@@ -25,10 +47,14 @@ export function SchemeCard({ scheme, onClick }: SchemeCardProps) {
   ).length;
 
   const totalStops =
-    typeof scheme.totalStops === "number" ? scheme.totalStops : stopsFromPoints;
+    summary?.totalStops ??
+    scheme.totalParadas ??
+    scheme.totalStops ??
+    stopsFromPoints;
 
   // Quantidade de pontos cadastrados
-  const totalPoints = scheme.routePoints.length;
+  const totalPoints =
+    summary?.totalPontos ?? scheme.totalPontos ?? scheme.routePoints.length;
 
   return (
     <Card
@@ -48,7 +74,7 @@ export function SchemeCard({ scheme, onClick }: SchemeCardProps) {
                 <Badge
                   variant="outline"
                   className={
-                    scheme.direction === "Ida"
+                    scheme.direction?.toLowerCase() === "ida"
                       ? "border-green-300 text-green-700 bg-green-50"
                       : "border-purple-300 text-purple-700 bg-purple-50"
                   }
@@ -65,8 +91,7 @@ export function SchemeCard({ scheme, onClick }: SchemeCardProps) {
             <div className="flex items-center gap-2 text-slate-600">
               <MapPin className="w-4 h-4 flex-shrink-0" />
               <span className="text-sm truncate">
-                {scheme.origin} ({scheme.originState}) → {scheme.destination} (
-                {scheme.destinationState})
+                {origemLabel} → {destinoLabel}
               </span>
             </div>
             <div className="flex items-center gap-2 text-slate-600">
@@ -94,7 +119,7 @@ export function SchemeCard({ scheme, onClick }: SchemeCardProps) {
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-purple-500" />
               <span className="text-slate-600">
-                <span className="text-slate-900">{totalPoints}</span> ponto
+                <span className="text-slate-900">{totalPoints}</span> pc
                 {totalPoints !== 1 ? "s" : ""}
               </span>
             </div>

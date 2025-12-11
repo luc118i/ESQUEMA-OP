@@ -1,5 +1,5 @@
 // src/services/locationsService.ts
-import { api } from "@/services/api";
+import { apiGet } from "./api";
 
 export interface LocationApi {
   id: string;
@@ -27,16 +27,14 @@ export async function searchLocationsApi(
     return [];
   }
 
-  const response = await api.get<LocationApi[]>("/locations", {
-    params: { q: trimmed },
-  });
+  const result = await apiGet(`/locations?q=${encodeURIComponent(trimmed)}`);
+  return result;
 
-  return response.data ?? [];
+  //return response.data ?? [];
 }
 
 export async function getLocationByIdApi(
   id: string
 ): Promise<LocationApi | null> {
-  const response = await api.get<LocationApi | null>(`/locations/${id}`);
-  return response.data;
+  return await apiGet(`/locations/${id}`);
 }

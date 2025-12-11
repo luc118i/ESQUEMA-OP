@@ -2,6 +2,7 @@ import { HomePage } from "./pages/Home/HomePage";
 import { SchemeDetailPage } from "./pages/SchemeDetail/SchemeDetailPage";
 import { CreateSchemePage } from "./pages/SchemeCreate/CreateSchemePage";
 import { useState } from "react";
+import { LocationCreatePage } from "./pages/Locations/LocationCreatePage";
 
 // Tipos continuam IGUAIS
 export interface RoutePoint {
@@ -69,7 +70,7 @@ export interface OperationalScheme {
 }
 
 // 🔥 Agora o state guarda só o ID
-type ViewType = "home" | "detail" | "create";
+type ViewType = "home" | "detail" | "create" | "createLocation";
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>("home");
@@ -90,12 +91,17 @@ export default function App() {
     setCurrentView("create");
   };
 
+  const handleCreateLocation = () => {
+    setCurrentView("createLocation");
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {currentView === "home" && (
         <HomePage
           onViewScheme={handleViewScheme}
           onCreateNew={handleCreateNew}
+          onCreateLocation={handleCreateLocation}
         />
       )}
 
@@ -108,6 +114,10 @@ export default function App() {
 
       {currentView === "create" && (
         <CreateSchemePage onBack={handleBackToHome} />
+      )}
+
+      {currentView === "createLocation" && (
+        <LocationCreatePage onBack={handleBackToHome} />
       )}
     </div>
   );

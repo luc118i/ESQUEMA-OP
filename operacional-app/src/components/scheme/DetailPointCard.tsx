@@ -20,6 +20,7 @@ const pointTypeLabels: Record<string, string> = {
 };
 
 export function DetailPointCard({ point, index }: DetailPointCardProps) {
+  const isInitial = !!point.isInitial;
   const city = point.location?.city ?? "";
   const state = point.location?.state ?? "";
   const description =
@@ -33,7 +34,13 @@ export function DetailPointCard({ point, index }: DetailPointCardProps) {
   const alerts = generateANTTAlerts(point, index, avgSpeed);
 
   return (
-    <Card className="border border-slate-200 overflow-hidden">
+    <Card
+      className={`overflow-hidden ${
+        isInitial
+          ? "border border-blue-400 ring-1 ring-blue-200 bg-blue-50/40"
+          : "border border-slate-200"
+      }`}
+    >
       {/* ===================== HEADER ===================== */}
       <div className="bg-gradient-to-r from-slate-50 to-white p-4 border-b border-slate-200">
         <div className="flex items-start justify-between gap-4">
@@ -45,10 +52,21 @@ export function DetailPointCard({ point, index }: DetailPointCardProps) {
             </div>
 
             <div className="flex-1 min-w-0">
-              {/* Descrição */}
-              <h3 className="text-slate-900 text-base font-medium truncate">
-                {description}
-              </h3>
+              {/* Linha: Descrição + badge "Início da viagem" */}
+              <div className="flex items-center gap-2">
+                <h3 className="text-slate-900 text-base font-medium truncate">
+                  {description}
+                </h3>
+
+                {isInitial && (
+                  <span
+                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px]
+        font-semibold bg-blue-100 text-blue-800 border border-blue-200 whitespace-nowrap"
+                  >
+                    Início da viagem
+                  </span>
+                )}
+              </div>
 
               {/* Cidade / UF */}
               <p className="text-slate-600 text-sm truncate">

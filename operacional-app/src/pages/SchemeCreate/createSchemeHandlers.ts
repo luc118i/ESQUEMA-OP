@@ -2,7 +2,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { RoutePoint } from "@/types/scheme";
 
-import rawLines from "@/data/Lista-de-linhas.json";
+import rawLines from "../../data/lista-de-linhas.json";
 
 // ===============================
 // TIPAGEM DO CSV NORMALIZADA
@@ -98,13 +98,13 @@ export function createSchemeHandlers({
   const recalcAllRoutePoints = (points: RoutePoint[]): RoutePoint[] => {
     if (!points.length) return points;
 
-    // garante ordem sequencial
+    // 1) garante ordem sequencial
     let newPoints = points.map((p, index) => ({
       ...p,
       order: index + 1,
     }));
 
-    // garante que exista um ponto inicial
+    // 2) garante que exista um ponto inicial
     const hasInitial = newPoints.some((p) => p.isInitial);
     if (!hasInitial) {
       newPoints = newPoints.map((p, index) => ({
@@ -113,29 +113,35 @@ export function createSchemeHandlers({
       }));
     }
 
-    // recalcula distâncias / tempos de deslocamento
+    // 3) recalcula APENAS cumulativo + tempo de deslocamento
     for (let i = 0; i < newPoints.length; i++) {
       const current = { ...newPoints[i] };
 
       if (i === 0) {
+        // primeiro ponto sempre com distância acumulada = 0
         newPoints[i] = {
           ...current,
           order: 1,
-          distanceKm: 0,
           cumulativeDistanceKm: 0,
-          driveTimeMin: 0,
+          // distanceKm e driveTimeMin ficam como já estão
         };
         continue;
       }
 
       const prevPoint = newPoints[i - 1];
 
-      const distanceKm = calculateDistance(
-        prevPoint.location.lat,
-        prevPoint.location.lng,
-        current.location.lat,
-        current.location.lng
-      );
+      // 👉 PRIORIDADE:
+      // 1) usar distanceKm já existente (API ORS, valor salvo no banco etc.)
+      // 2) SE não existir ou for inválido, cair para Haversine como fallback
+      let distanceKm = Number(current.distanceKm ?? 0);
+      if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+        distanceKm = calculateDistance(
+          prevPoint.location.lat,
+          prevPoint.location.lng,
+          current.location.lat,
+          current.location.lng
+        );
+      }
 
       const cumulativeDistanceKm =
         (prevPoint.cumulativeDistanceKm ?? 0) + distanceKm;
@@ -143,7 +149,11 @@ export function createSchemeHandlers({
       const customSpeed =
         typeof current.avgSpeed === "number" ? current.avgSpeed : undefined;
 
-      const driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
+      // se já existir driveTimeMin válido, preserva; senão calcula
+      let driveTimeMin = Number(current.driveTimeMin ?? 0);
+      if (!Number.isFinite(driveTimeMin) || driveTimeMin <= 0) {
+        driveTimeMin = computeDriveTimeMinutes(distanceKm, customSpeed);
+      }
 
       newPoints[i] = {
         ...current,
@@ -154,7 +164,7 @@ export function createSchemeHandlers({
       };
     }
 
-    // reaplica horários a partir do ponto inicial atual
+    // 4) reaplica horários a partir do ponto inicial atual
     const initial = newPoints.find((p) => p.isInitial)!;
     return recalcTimesFromInitial(newPoints, initial.id, tripTime);
   };

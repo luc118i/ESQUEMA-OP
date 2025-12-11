@@ -3,26 +3,23 @@ import type { OperationalScheme, SchemeListItem } from "@/types/scheme";
 import { mapToOperationalScheme } from "@/lib/mapToOperationalScheme";
 
 export function useSchemes() {
-  const [data, setData] = useState<OperationalScheme[]>([]);
+  const [data, setData] = useState<SchemeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
+        setLoading(true);
+
         const res = await fetch("http://localhost:3333/schemes");
-        if (!res.ok) throw new Error("Erro ao buscar esquemas operacionais");
+        if (!res.ok) throw new Error("Erro ao buscar esquemas");
 
         const json = (await res.json()) as SchemeListItem[];
 
-        const mapped = json.map(({ scheme, summary }) =>
-          mapToOperationalScheme(scheme, [], summary)
-        );
-
-        setData(mapped);
+        setData(json); // ← agora retorna direto
       } catch (err: any) {
-        console.error("[useSchemes] erro:", err);
-        setError(err.message || "Erro desconhecido");
+        setError(err.message ?? "Erro desconhecido");
       } finally {
         setLoading(false);
       }
