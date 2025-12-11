@@ -7,6 +7,7 @@ import {
   createLocation,
   updateLocation,
   deleteLocation,
+  getLocationBySigla,
 } from "./locations.service";
 
 export async function handleGetLocations(req: Request, res: Response) {
@@ -21,6 +22,30 @@ export async function handleGetLocations(req: Request, res: Response) {
   } catch (err: any) {
     console.error("[handleGetLocations] erro:", err);
     res.status(500).json({ error: err.message ?? "Erro ao buscar locais" });
+  }
+}
+
+export async function handleGetLocationBySigla(req: Request, res: Response) {
+  try {
+    const { sigla } = req.params;
+    const normalized = sigla?.toUpperCase().trim();
+
+    if (!normalized) {
+      return res.status(400).json({ error: "Sigla inválida" });
+    }
+
+    const location = await getLocationBySigla(normalized);
+
+    if (!location) {
+      return res.status(404).json({ error: "Local não encontrado" });
+    }
+
+    return res.json(location);
+  } catch (err: any) {
+    console.error("[handleGetLocationBySigla] erro:", err);
+    return res
+      .status(500)
+      .json({ error: err.message ?? "Erro ao buscar local pela sigla" });
   }
 }
 

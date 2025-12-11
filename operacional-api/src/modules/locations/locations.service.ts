@@ -61,6 +61,36 @@ export async function searchLocations(query: string): Promise<Location[]> {
   return (data ?? []) as Location[];
 }
 
+// Busca por SIGLA (exata, case-insensitive)
+export async function getLocationBySigla(
+  sigla: string
+): Promise<Location | null> {
+  const trimmed = sigla.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  // Vamos padronizar a sigla em maiúsculo
+  const normalized = trimmed.toUpperCase();
+
+  const { data, error } = await supabase
+    .from("locations")
+    .select("*")
+    .eq("sigla", normalized)
+    .limit(1);
+
+  if (error) {
+    console.error("[getLocationBySigla] erro:", error);
+    throw new Error("Erro ao buscar local pela sigla");
+  }
+
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  return data[0] as Location;
+}
+
 // Cria um novo local
 export async function createLocation(
   input: CreateLocationInput

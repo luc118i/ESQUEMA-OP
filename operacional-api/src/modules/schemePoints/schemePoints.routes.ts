@@ -8,26 +8,58 @@ import {
   updateSchemePointHandler,
   deleteSchemePointHandler,
   listPointsBySchemeIdHandler,
+  replaceSchemePointsHandler,
 } from "./schemePoints.controller";
 
 const schemePointsRouter = Router();
 
-// 🔎 listar todos os pontos
+/**
+ * ROTAS ORGANIZADAS
+ * ------------------
+ * /scheme-points                    -> lista todos
+ * /scheme-points/schemes/:id/points -> lista por esquema
+ * /scheme-points/:id                -> CRUD individual
+ * /scheme-points/schemes/:id/points -> substituir lista completa
+ */
+
+/* -----------------------------
+   🔎 1) LISTAR TODOS OS PONTOS
+------------------------------*/
 schemePointsRouter.get("/", listSchemePointsHandler);
 
-// 🔎 listar pontos de um esquema (ROTA CORRETA DO FRONT)
-schemePointsRouter.get("/schemes/:id/points", listPointsBySchemeIdHandler);
+/* ---------------------------------------------------------
+   🔎 2) LISTAR PONTOS DE UM ESQUEMA (USADO PELO FRONT)
+   GET /scheme-points/schemes/:schemeId/points
+----------------------------------------------------------*/
+schemePointsRouter.get(
+  "/schemes/:schemeId/points",
+  listPointsBySchemeIdHandler
+);
 
-// 🔎 buscar um ponto por id
+/* --------------------------------------------------------
+   💾 3) SUBSTITUIR TODA A LISTA DE PONTOS DE UM ESQUEMA
+   PUT /scheme-points/schemes/:schemeId/points
+---------------------------------------------------------*/
+schemePointsRouter.put("/schemes/:schemeId/points", replaceSchemePointsHandler);
+
+/* -----------------------------
+   🔎 4) BUSCAR 1 PONTO POR ID
+------------------------------*/
 schemePointsRouter.get("/:id", getSchemePointByIdHandler);
 
-// ➕ criar
+/* -----------------------------
+   ➕ 5) CRIAR INDIVIDUAL
+------------------------------*/
 schemePointsRouter.post("/", createSchemePointHandler);
 
-// ✏ atualizar
+/* -----------------------------
+   ✏ 6) ATUALIZAR INDIVIDUAL
+------------------------------*/
 schemePointsRouter.put("/:id", updateSchemePointHandler);
 
-// 🗑 excluir
+/* -----------------------------
+   🗑 7) EXCLUIR INDIVIDUAL
+------------------------------*/
 schemePointsRouter.delete("/:id", deleteSchemePointHandler);
 
 export { schemePointsRouter };

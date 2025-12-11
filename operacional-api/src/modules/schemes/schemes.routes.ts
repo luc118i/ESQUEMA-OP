@@ -7,31 +7,29 @@ import {
   updateSchemeHandler,
   deleteSchemeHandler,
   getSchemeSummaryHandler,
+  getSchemeFullHandler,
+  searchSchemeByKeyHandler,
 } from "./schemes.controller";
 
-import { listSchemePointsBySchemeHandler } from "../schemePoints/schemePoints.controller";
+import { listPointsBySchemeIdHandler } from "../schemePoints/schemePoints.controller";
 
 const schemesRouter = Router();
 
-// listar todos os esquemas
+// lista todos
 schemesRouter.get("/", listSchemesHandler);
 
-// resumo (summary) de um esquema
+// 🔍 buscar por (codigo + direction + tripTime)
+schemesRouter.get("/search", searchSchemeByKeyHandler);
+
+// full deve vir antes de "/:id"
+schemesRouter.get("/:id/full", getSchemeFullHandler);
+
 schemesRouter.get("/:id/summary", getSchemeSummaryHandler);
-
-// 🔹 NOVO: pontos de um esquema (rota que o front espera)
-schemesRouter.get("/:id/points", listSchemePointsBySchemeHandler);
-
-// buscar um esquema por id
+schemesRouter.get("/:id/points", listPointsBySchemeIdHandler);
 schemesRouter.get("/:id", getSchemeByIdHandler);
 
-// criar
 schemesRouter.post("/", createSchemeHandler);
-
-// atualizar
 schemesRouter.put("/:id", updateSchemeHandler);
-
-// deletar
 schemesRouter.delete("/:id", deleteSchemeHandler);
 
 export { schemesRouter };

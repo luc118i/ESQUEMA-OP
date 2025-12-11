@@ -6,9 +6,12 @@ import {
   handleCreateLocation,
   handleUpdateLocation,
   handleDeleteLocation,
+  handleGetLocationBySigla,
 } from "./locations.controller";
 
 export const locationsRouter = Router();
+// Senão o Express tenta interpretar a sigla como ID
+locationsRouter.get("/sigla/:sigla", handleGetLocationBySigla);
 
 // GET /locations        -> lista todos ou busca com ?q=
 locationsRouter.get("/", handleGetLocations);

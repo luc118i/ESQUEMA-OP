@@ -6,10 +6,11 @@ import {
   createScheme,
   updateScheme,
   deleteScheme,
+  getSchemeSummary,
+  getSchemeByIdWithPoints,
+  findSchemeByKey,
 } from "./schemes.service";
 import type { CreateSchemeInput, UpdateSchemeInput } from "./schemes.types";
-
-import { getSchemeSummary } from "./schemes.service";
 
 export async function listSchemesHandler(_req: Request, res: Response) {
   try {
@@ -40,6 +41,30 @@ export async function getSchemeByIdHandler(req: Request, res: Response) {
     return res
       .status(500)
       .json({ message: "Erro ao buscar esquema operacional" });
+  }
+}
+
+/**
+ * GET /schemes/:id/full
+ * Retorna esquema + locations + pontos (completo)
+ */
+export async function getSchemeFullHandler(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+
+    const scheme = await getSchemeByIdWithPoints(id);
+    if (!scheme) {
+      return res
+        .status(404)
+        .json({ message: "Esquema operacional não encontrado" });
+    }
+
+    return res.json(scheme);
+  } catch (err) {
+    console.error("[getSchemeFullHandler]", err);
+    return res.status(500).json({
+      message: "Erro ao buscar esquema operacional completo",
+    });
   }
 }
 
@@ -121,5 +146,37 @@ export async function getSchemeSummaryHandler(req: Request, res: Response) {
     return res
       .status(500)
       .json({ message: "Erro ao gerar resumo do esquema operacional" });
+  }
+}
+
+export async function searchSchemeByKeyHandler(req: Request, res: Response) {
+  try {
+    const { codigo, direction, tripTime } = req.query;
+
+    if (!codigo || !direction || !tripTime) {
+      return res.status(400).json({
+        message:
+          "Parâmetros obrigatórios: codigo, direction e tripTime (HH:MM).",
+      });
+    }
+
+    const scheme = await findSchemeByKey(
+      String(codigo),
+      String(direction),
+      String(tripTime)
+    );
+
+    if (!scheme) {
+      return res.status(404).json({
+        message: "Nenhum esquema encontrado para essa combinação.",
+      });
+    }
+
+    return res.json(scheme);
+  } catch (err) {
+    console.error("[searchSchemeByKeyHandler]", err);
+    return res.status(500).json({
+      message: "Erro ao buscar esquema operacional por combinação de chave.",
+    });
   }
 }

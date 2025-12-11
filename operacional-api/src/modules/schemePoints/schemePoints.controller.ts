@@ -1,5 +1,6 @@
 // src/modules/schemePoints/schemePoints.controller.ts
 import type { Request, Response } from "express";
+
 import {
   getAllSchemePoints,
   getSchemePointById,
@@ -7,16 +8,16 @@ import {
   createSchemePoint,
   updateSchemePoint,
   deleteSchemePoint,
+  setSchemePointsForScheme,
 } from "./schemePoints.service";
+
 import type {
   CreateSchemePointInput,
   UpdateSchemePointInput,
 } from "./schemePoints.types";
 
-import { supabase } from "../../config/upabaseClient";
-
 /**
- * GET /scheme-points
+ * GET /scheme-points  -> lista geral
  */
 export async function listSchemePointsHandler(_req: Request, res: Response) {
   try {
@@ -24,14 +25,14 @@ export async function listSchemePointsHandler(_req: Request, res: Response) {
     return res.json(points);
   } catch (err) {
     console.error("[listSchemePointsHandler]", err);
-    return res
-      .status(500)
-      .json({ message: "Erro ao listar pontos de esquema operacional" });
+    return res.status(500).json({
+      message: "Erro ao listar pontos de esquema operacional",
+    });
   }
 }
 
 /**
- * GET /scheme-points/:id
+ * GET /scheme-points/:id -> busca individual
  */
 export async function getSchemePointByIdHandler(req: Request, res: Response) {
   try {
@@ -54,18 +55,18 @@ export async function getSchemePointByIdHandler(req: Request, res: Response) {
 }
 
 /**
- * GET /schemes/:schemeId/points  👈 rota aninhada
+ * GET /schemes/:schemeId/points
+ * Lista ordenada POR esquema, com JOIN em locations
  */
-export async function listSchemePointsBySchemeHandler(
-  req: Request,
-  res: Response
-) {
+export async function listPointsBySchemeIdHandler(req: Request, res: Response) {
+  const { schemeId } = req.params;
+
   try {
-    const { schemeId } = req.params;
     const points = await getSchemePointsBySchemeId(schemeId);
+
     return res.json(points);
   } catch (err) {
-    console.error("[listSchemePointsBySchemeHandler]", err);
+    console.error("[listPointsBySchemeIdHandler]", err);
     return res
       .status(500)
       .json({ message: "Erro ao listar pontos do esquema operacional" });
@@ -74,23 +75,21 @@ export async function listSchemePointsBySchemeHandler(
 
 /**
  * POST /scheme-points
+ * Cria um ponto individual
  */
 export async function createSchemePointHandler(req: Request, res: Response) {
   try {
     const body = req.body as CreateSchemePointInput;
 
+    // Validação mínima (agora mais flexível)
     if (
       !body.scheme_id ||
       !body.location_id ||
-      typeof body.ordem !== "number" ||
-      !body.tipo ||
-      typeof body.distancia_km !== "number" ||
-      typeof body.tempo_deslocamento_min !== "number" ||
-      typeof body.tempo_no_local_min !== "number"
+      typeof body.ordem !== "number"
     ) {
-      return res
-        .status(400)
-        .json({ message: "Dados obrigatórios não informados" });
+      return res.status(400).json({
+        message: "Campos obrigatórios: scheme_id, location_id, ordem",
+      });
     }
 
     const point = await createSchemePoint(body);
@@ -109,9 +108,9 @@ export async function createSchemePointHandler(req: Request, res: Response) {
 export async function updateSchemePointHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const body = req.body as UpdateSchemePointInput;
+    const input = req.body as UpdateSchemePointInput;
 
-    const updated = await updateSchemePoint(id, body);
+    const updated = await updateSchemePoint(id, input);
     if (!updated) {
       return res
         .status(404)
@@ -133,7 +132,6 @@ export async function updateSchemePointHandler(req: Request, res: Response) {
 export async function deleteSchemePointHandler(req: Request, res: Response) {
   try {
     const { id } = req.params;
-
     await deleteSchemePoint(id);
     return res.status(204).send();
   } catch (err) {
@@ -144,52 +142,33 @@ export async function deleteSchemePointHandler(req: Request, res: Response) {
   }
 }
 
-// 🔎 listar pontos de um esquema específico (rota correta usada no front)
-export async function listPointsBySchemeIdHandler(req: Request, res: Response) {
-  const { id: schemeId } = req.params;
-
+/**
+ * PUT /schemes/:schemeId/points
+ * -> substitui a LISTA COMPLETA de pontos
+ * Perfeito para salvar o esquema vindo do front.
+ */
+export async function replaceSchemePointsHandler(req: Request, res: Response) {
   try {
-    const { data, error } = await supabase
-      .from("scheme_points")
-      .select(
-        `
-        id,
-        scheme_id,
-        ordem,
-        tipo,
-        distancia_km,
-        tempo_deslocamento_min,
-        tempo_no_local_min,
-        location:locations (
-          id,
-          sigla,
-          descricao,
-          cidade,
-          uf,
-          tipo,
-          lat,
-          lng
-        )
-      `
-      )
-      .eq("scheme_id", schemeId)
-      .order("ordem", { ascending: true });
+    const { schemeId } = req.params;
+    const points = req.body as CreateSchemePointInput[];
 
-    if (error) {
-      console.error("[listPointsBySchemeIdHandler] erro:", error);
-      return res
-        .status(500)
-        .json({ message: "Erro ao buscar pontos do esquema" });
+    if (!Array.isArray(points)) {
+      return res.status(400).json({
+        message: "Payload deve ser uma lista de pontos",
+      });
     }
 
-    if (!data || data.length === 0) {
-      // 404 para o hook tratar como "nenhum ponto"
-      return res.status(404).json({ message: "Nenhum ponto encontrado" });
-    }
+    const saved = await setSchemePointsForScheme(schemeId, points);
 
-    return res.json(data);
+    return res.json({
+      message: "Pontos do esquema atualizados com sucesso",
+      quantidade: saved.length,
+      pontos: saved,
+    });
   } catch (err) {
-    console.error("[listPointsBySchemeIdHandler] exceção:", err);
-    return res.status(500).json({ message: "Erro interno ao buscar pontos" });
+    console.error("[replaceSchemePointsHandler]", err);
+    return res
+      .status(500)
+      .json({ message: "Erro ao salvar pontos do esquema operacional" });
   }
 }
