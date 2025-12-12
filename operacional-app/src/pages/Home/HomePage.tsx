@@ -1,10 +1,12 @@
 // src/pages/Home/HomePage.tsx
 import { useState, useMemo } from "react";
-import { Search, Plus, Route, MapPin } from "lucide-react";
+import { Search, Route, User, LogOut } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { HomeSchemeCard } from "@/components/scheme/HomeSchemeCard";
+
+import { useAuth } from "@/context/AuthContext"; // NOVO
 
 import { useSchemes } from "@/hooks/useSchemes";
 
@@ -27,38 +29,35 @@ interface HomePageProps {
   onViewScheme: (schemeId: string) => void;
   onCreateNew: () => void;
   onCreateLocation: () => void;
+  onLoginClick?: () => void;
 }
 
 export function HomePage({
   onViewScheme,
   onCreateNew,
   onCreateLocation,
+  onLoginClick,
 }: HomePageProps) {
-  // ✅ useSchemes retorna OperationalScheme[]
-  const { data: schemes, loading, error } = useSchemes();
+  const { isAuthenticated, logout } = useAuth(); // NOVO
 
-  // ✅ todos os hooks vem ANTES de qualquer return condicional
+  const { data: schemes, loading, error } = useSchemes();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
 
   const normalizedSearch = searchTerm.trim();
   const showFilters = normalizedSearch.length < 3;
 
-  // 1) Converter todos os OperationalScheme em snapshots
   const allSnapshots = useMemo<SchemeCardSnapshot[]>(() => {
     return schemes.map((item: SchemeListItem) =>
       mapListItemToCardSnapshot(item)
     );
   }, [schemes]);
 
-  // 2) Ler recentes e favoritos do localStorage
-  // (sem hook extra, para não alterar ordem de hooks)
   const recentSnapshots = loadRecentSchemes();
   const [favoriteSnapshots, setFavoriteSnapshots] = useState(
     loadFavoriteSchemes()
   );
 
-  // 🔁 returns condicionais SÓ DEPOIS dos hooks
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-600">
@@ -75,14 +74,12 @@ export function HomePage({
     );
   }
 
-  // 3) Seleciona lista base conforme filtro
   let listToRender: SchemeCardSnapshot[] = [];
 
   if (filterMode === "all") listToRender = allSnapshots;
   if (filterMode === "recent") listToRender = recentSnapshots;
   if (filterMode === "favorites") listToRender = favoriteSnapshots;
 
-  // 4) Filtro de busca (≥ 3 caracteres)
   let filteredSnapshots: SchemeCardSnapshot[] = listToRender;
 
   if (normalizedSearch.length >= 3) {
@@ -102,50 +99,81 @@ export function HomePage({
     });
   }
 
-  // 5) Clique no card: adiciona Recentes + abre esquema
   function handleOpenSnapshot(snapshot: SchemeCardSnapshot) {
     addRecentScheme(snapshot);
     onViewScheme(snapshot.schemeId);
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 shadow-sm">
+      <header className="bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg">
-              <Route className="w-6 h-6 text-white" />
+          <div className="flex items-center justify-between">
+            {/* Bloco logo + título */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg">
+                <Route className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-slate-900 font-semibold">
+                  Painel Operacional
+                </h1>
+                <p className="text-slate-600 text-sm">
+                  Esquemas operacionais e rotas
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-slate-900">Painel Operacional</h1>
-              <p className="text-slate-600 text-sm">
-                Esquemas operacionais e rotas
-              </p>
-            </div>
+
+            {/* Área direita */}
+            {!isAuthenticated ? (
+              // MODO PÚBLICO — ÍCONE DE LOGIN
+              <button
+                type="button"
+                onClick={onLoginClick}
+                className="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-slate-100 text-slate-600 transition-colors"
+                aria-label="Acesso administrativo"
+              >
+                <User className="w-5 h-5" />
+              </button>
+            ) : (
+              // MODO AUTENTICADO — MENU SIMPLES + LOGOUT
+              <div className="flex items-center gap-3">
+                <span className="text-slate-700 text-sm">Olá, operador</span>
+
+                <button
+                  onClick={logout}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-full hover:bg-red-100 text-red-600 transition-colors"
+                  aria-label="Sair"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      </header>
 
       {/* Conteúdo */}
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-8">
-        {/* Botões Ações */}
-        <div className="flex flex-wrap gap-2 mb-8">
-          <Button
-            onClick={onCreateNew}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Plus className="w-4 h-4" />
-            Criar/Editar esquema
-          </Button>
-          <Button
-            onClick={onCreateLocation}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <MapPin className="w-4 h-4" />
-            Cadastrar local
-          </Button>
-        </div>
+      <main className="max-w-7xl mx-auto px-4 md:px-8 py-8">
+        {/* BOTÕES AVANÇADOS (somente autenticado) */}
+        {isAuthenticated && (
+          <div className="flex flex-wrap gap-2 mb-8">
+            <Button
+              onClick={onCreateNew}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Criar/Editar esquema
+            </Button>
+
+            <Button
+              onClick={onCreateLocation}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              Cadastrar local
+            </Button>
+          </div>
+        )}
 
         {/* Busca */}
         <div className="mb-4">
@@ -155,12 +183,12 @@ export function HomePage({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar esquema operacional..."
-              className="pl-12 h-14 text-base border-slate-300"
+              className="pl-12 h-14 text-base border-slate-300 bg-slate-50/60"
             />
           </div>
         </div>
 
-        {/* Filtros estilo WhatsApp */}
+        {/* Filtros */}
         {showFilters && (
           <div className="mb-6 flex items-center gap-2">
             {["all", "recent", "favorites"].map((mode) => (
@@ -182,14 +210,13 @@ export function HomePage({
           </div>
         )}
 
-        {/* Contador de resultados */}
         <p className="text-slate-600 mb-4">
           {filteredSnapshots.length} esquema
           {filteredSnapshots.length !== 1 ? "s" : ""} encontrado
           {filteredSnapshots.length !== 1 ? "s" : ""}.
         </p>
 
-        {/* Lista de cards */}
+        {/* Lista */}
         <div className="grid grid-cols-1 gap-4">
           {filteredSnapshots.map((snap) => (
             <HomeSchemeCard
@@ -204,7 +231,7 @@ export function HomePage({
             />
           ))}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

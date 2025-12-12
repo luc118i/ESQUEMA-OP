@@ -6,6 +6,8 @@ import { locationsRouter } from "./modules/locations";
 import { schemesRouter } from "./modules/schemes";
 import { schemePointsRouter } from "./modules/schemePoints";
 import roadSegmentsRoutes from "./modules/roadSegments/roadSegments.routes";
+import { authRoutes } from "./routes/authRoutes";
+import { authMiddleware } from "./middlewares/authMiddleware";
 
 dotenv.config();
 
@@ -27,7 +29,9 @@ app.use(express.json());
 app.get("/status", (_req, res) => {
   res.json({ status: "ok", message: "API operacional rodando 🚍" });
 });
-
+// 🔐
+app.use(authRoutes);
+// 📡 rotas de leitura (públicas)
 app.use("/locations", locationsRouter);
 app.use("/schemes", schemesRouter);
 app.use("/scheme-points", schemePointsRouter);

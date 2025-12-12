@@ -1,4 +1,5 @@
 // src/modules/locations/locations.routes.ts
+
 import { Router } from "express";
 import {
   handleGetLocations,
@@ -9,21 +10,31 @@ import {
   handleGetLocationBySigla,
 } from "./locations.controller";
 
+import { authMiddleware } from "../../middlewares/authMiddleware";
+
 export const locationsRouter = Router();
-// Senão o Express tenta interpretar a sigla como ID
+
+/**
+ * 📌 ROTAS PÚBLICAS (somente leitura)
+ * ------------------------------------
+ */
+
+// Buscar por sigla precisa vir antes do :id
 locationsRouter.get("/sigla/:sigla", handleGetLocationBySigla);
 
-// GET /locations        -> lista todos ou busca com ?q=
+// GET /locations → lista todos ou busca com ?q=
 locationsRouter.get("/", handleGetLocations);
 
-// GET /locations/:id    -> detalhe
+// GET /locations/:id → detalhe
 locationsRouter.get("/:id", handleGetLocation);
 
-// POST /locations       -> cria
-locationsRouter.post("/", handleCreateLocation);
+/**
+ * 🔐 ROTAS PROTEGIDAS
+ * ------------------------------------
+ */
 
-// PUT /locations/:id    -> atualiza
-locationsRouter.put("/:id", handleUpdateLocation);
+locationsRouter.post("/", authMiddleware, handleCreateLocation);
 
-// DELETE /locations/:id -> remove
-locationsRouter.delete("/:id", handleDeleteLocation);
+locationsRouter.put("/:id", authMiddleware, handleUpdateLocation);
+
+locationsRouter.delete("/:id", authMiddleware, handleDeleteLocation);

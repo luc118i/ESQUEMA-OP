@@ -13,6 +13,9 @@ export interface DialogProps {
   children: React.ReactNode;
 }
 
+interface DialogDescriptionProps
+  extends React.HTMLAttributes<HTMLParagraphElement> {}
+
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
   return (
     <Transition appear show={open} as={Fragment}>
@@ -23,10 +26,9 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
       >
         <DialogOverlay />
 
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4 text-center">
-            {children}
-          </div>
+        {/* Centraliza no meio da tela */}
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          {children}
         </div>
       </HDialog>
     </Transition>
@@ -72,7 +74,16 @@ export function DialogContent({
     >
       <HDialog.Panel
         className={cn(
-          "w-full max-w-3xl transform overflow-hidden rounded-lg bg-white p-6 text-left align-middle shadow-xl transition-all",
+          `
+          transform overflow-hidden
+          rounded-lg bg-white p-6
+          text-left align-middle shadow-xl transition-all
+
+          w-[90vw]          /* mobile: ocupa ~90% da largura */
+          max-w-sm          /* limite máximo de largura: ~24rem (~384px) */
+          sm:w-[420px]      /* desktop: largura fixa confortável */
+          sm:max-w-[420px]
+        `,
           className
         )}
         {...props}
@@ -82,7 +93,6 @@ export function DialogContent({
     </Transition.Child>
   );
 }
-
 // ---------- HEADER / TITLE / FOOTER / CLOSE ----------
 
 interface DialogHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -119,6 +129,13 @@ export function DialogFooter({ className, ...props }: DialogFooterProps) {
       {...props}
     />
   );
+}
+
+export function DialogDescription({
+  className,
+  ...props
+}: DialogDescriptionProps) {
+  return <p className={cn("text-sm text-gray-600", className)} {...props} />;
 }
 
 export function DialogCloseButton({ onClick }: { onClick: () => void }) {

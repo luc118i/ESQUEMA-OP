@@ -10,6 +10,7 @@ import {
   listPointsBySchemeIdHandler,
   replaceSchemePointsHandler,
 } from "./schemePoints.controller";
+import { authMiddleware } from "../../middlewares/authMiddleware";
 
 const schemePointsRouter = Router();
 
@@ -23,12 +24,12 @@ const schemePointsRouter = Router();
  */
 
 /* -----------------------------
-   🔎 1) LISTAR TODOS OS PONTOS
+   🔎 1) LISTAR TODOS OS PONTOS (PÚBLICO)
 ------------------------------*/
 schemePointsRouter.get("/", listSchemePointsHandler);
 
 /* ---------------------------------------------------------
-   🔎 2) LISTAR PONTOS DE UM ESQUEMA (USADO PELO FRONT)
+   🔎 2) LISTAR PONTOS DE UM ESQUEMA (USADO PELO FRONT) (PÚBLICO)
    GET /scheme-points/schemes/:schemeId/points
 ----------------------------------------------------------*/
 schemePointsRouter.get(
@@ -37,29 +38,33 @@ schemePointsRouter.get(
 );
 
 /* --------------------------------------------------------
-   💾 3) SUBSTITUIR TODA A LISTA DE PONTOS DE UM ESQUEMA
+   💾 3) SUBSTITUIR TODA A LISTA DE PONTOS DE UM ESQUEMA (PROTEGIDO)
    PUT /scheme-points/schemes/:schemeId/points
 ---------------------------------------------------------*/
-schemePointsRouter.put("/schemes/:schemeId/points", replaceSchemePointsHandler);
+schemePointsRouter.put(
+  "/schemes/:schemeId/points",
+  authMiddleware,
+  replaceSchemePointsHandler
+);
 
 /* -----------------------------
-   🔎 4) BUSCAR 1 PONTO POR ID
+   🔎 4) BUSCAR 1 PONTO POR ID (PÚBLICO)
 ------------------------------*/
 schemePointsRouter.get("/:id", getSchemePointByIdHandler);
 
 /* -----------------------------
-   ➕ 5) CRIAR INDIVIDUAL
+   ➕ 5) CRIAR INDIVIDUAL (PROTEGIDO)
 ------------------------------*/
-schemePointsRouter.post("/", createSchemePointHandler);
+schemePointsRouter.post("/", authMiddleware, createSchemePointHandler);
 
 /* -----------------------------
-   ✏ 6) ATUALIZAR INDIVIDUAL
+   ✏ 6) ATUALIZAR INDIVIDUAL (PROTEGIDO)
 ------------------------------*/
-schemePointsRouter.put("/:id", updateSchemePointHandler);
+schemePointsRouter.put("/:id", authMiddleware, updateSchemePointHandler);
 
 /* -----------------------------
-   🗑 7) EXCLUIR INDIVIDUAL
+   🗑 7) EXCLUIR INDIVIDUAL (PROTEGIDO)
 ------------------------------*/
-schemePointsRouter.delete("/:id", deleteSchemePointHandler);
+schemePointsRouter.delete("/:id", authMiddleware, deleteSchemePointHandler);
 
 export { schemePointsRouter };

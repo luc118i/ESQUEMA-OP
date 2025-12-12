@@ -12,6 +12,7 @@ import {
 } from "./schemes.controller";
 
 import { listPointsBySchemeIdHandler } from "../schemePoints/schemePoints.controller";
+import { authMiddleware } from "../../middlewares/authMiddleware";
 
 const schemesRouter = Router();
 
@@ -28,8 +29,12 @@ schemesRouter.get("/:id/summary", getSchemeSummaryHandler);
 schemesRouter.get("/:id/points", listPointsBySchemeIdHandler);
 schemesRouter.get("/:id", getSchemeByIdHandler);
 
-schemesRouter.post("/", createSchemeHandler);
-schemesRouter.put("/:id", updateSchemeHandler);
-schemesRouter.delete("/:id", deleteSchemeHandler);
+/**
+ * ✏️ Rotas protegidas (criação/edição/remoção)
+ */
+
+schemesRouter.post("/", authMiddleware, createSchemeHandler);
+schemesRouter.put("/:id", authMiddleware, updateSchemeHandler);
+schemesRouter.delete("/:id", authMiddleware, deleteSchemeHandler);
 
 export { schemesRouter };

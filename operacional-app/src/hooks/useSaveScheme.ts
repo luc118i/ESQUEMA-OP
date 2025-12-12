@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { saveScheme, type SchemeDraft } from "@/services/schemes/saveScheme";
+import { useAuth } from "@/context/AuthContext";
 
 interface UseSaveSchemeResult {
   isSaving: boolean;
@@ -13,23 +14,28 @@ export function useSaveScheme(): UseSaveSchemeResult {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const save = useCallback(async (draft: SchemeDraft) => {
-    setIsSaving(true);
-    setError(null);
+  const { getAuthHeaders } = useAuth();
 
-    try {
-      const result = await saveScheme(draft);
-      return result;
-    } catch (err: any) {
-      const message =
-        err?.message || "Erro inesperado ao salvar esquema operacional.";
-      console.error("[useSaveScheme] erro:", err);
-      setError(message);
-      return null;
-    } finally {
-      setIsSaving(false);
-    }
-  }, []);
+  const save = useCallback(
+    async (draft: SchemeDraft) => {
+      setIsSaving(true);
+      setError(null);
+
+      try {
+        const result = await saveScheme(draft, getAuthHeaders());
+        return result;
+      } catch (err: any) {
+        const message =
+          err?.message || "Erro inesperado ao salvar esquema operacional.";
+        console.error("[useSaveScheme] erro:", err);
+        setError(message);
+        return null;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [getAuthHeaders]
+  );
 
   return { isSaving, error, save };
 }

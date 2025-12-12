@@ -1,8 +1,12 @@
+import { useState } from "react";
+
 import { HomePage } from "./pages/Home/HomePage";
 import { SchemeDetailPage } from "./pages/SchemeDetail/SchemeDetailPage";
 import { CreateSchemePage } from "./pages/SchemeCreate/CreateSchemePage";
-import { useState } from "react";
 import { LocationCreatePage } from "./pages/Locations/LocationCreatePage";
+
+import { LoginModal } from "./components/auth/LoginModal"; // ✅ modal de login
+import { useAuth } from "./context/AuthContext"; // ✅ contexto de auth
 
 // Tipos continuam IGUAIS
 export interface RoutePoint {
@@ -76,6 +80,12 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewType>("home");
   const [selectedSchemeId, setSelectedSchemeId] = useState<string | null>(null);
 
+  // ✅ controla abrir/fechar modal de login
+  const [loginOpen, setLoginOpen] = useState(false);
+
+  // ✅ para eventualmente bloquear navegação se quiser
+  const { isAuthenticated } = useAuth();
+
   // 👉 Agora recebe APENAS o id
   const handleViewScheme = (schemeId: string) => {
     setSelectedSchemeId(schemeId);
@@ -88,11 +98,29 @@ export default function App() {
   };
 
   const handleCreateNew = () => {
+    // opcional: se quiser garantir, pode checar auth aqui também
+    if (!isAuthenticated) {
+      setLoginOpen(true);
+      return;
+    }
     setCurrentView("create");
   };
 
   const handleCreateLocation = () => {
+    if (!isAuthenticated) {
+      setLoginOpen(true);
+      return;
+    }
     setCurrentView("createLocation");
+  };
+
+  // 👉 chamado pelo ícone de login no header da Home
+  const handleLoginClick = () => {
+    setLoginOpen(true);
+  };
+
+  const handleCloseLogin = () => {
+    setLoginOpen(false);
   };
 
   return (
@@ -102,6 +130,7 @@ export default function App() {
           onViewScheme={handleViewScheme}
           onCreateNew={handleCreateNew}
           onCreateLocation={handleCreateLocation}
+          onLoginClick={handleLoginClick}
         />
       )}
 
@@ -119,6 +148,9 @@ export default function App() {
       {currentView === "createLocation" && (
         <LocationCreatePage onBack={handleBackToHome} />
       )}
+
+      {/* ✅ Modal de login sempre montado, controlado via state */}
+      <LoginModal open={loginOpen} onClose={handleCloseLogin} />
     </div>
   );
 }

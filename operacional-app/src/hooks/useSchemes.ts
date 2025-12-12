@@ -17,7 +17,7 @@ export function useSchemes() {
 
         const json = (await res.json()) as SchemeListItem[];
 
-        setData(json); // ← agora retorna direto
+        setData(json);
       } catch (err: any) {
         setError(err.message ?? "Erro desconhecido");
       } finally {

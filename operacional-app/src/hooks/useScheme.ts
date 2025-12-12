@@ -19,10 +19,6 @@ export function useScheme(id: string) {
         const pointsUrl = `${API_URL}/scheme-points/schemes/${id}/points`;
         const summaryUrl = `${API_URL}/schemes/${id}/summary`;
 
-        console.log("[useScheme] schemeUrl:", schemeUrl);
-        console.log("[useScheme] pointsUrl:", pointsUrl);
-        console.log("[useScheme] summaryUrl:", summaryUrl);
-
         const [schemeRes, pointsRes, summaryRes] = await Promise.all([
           fetch(schemeUrl),
           fetch(pointsUrl),
@@ -35,7 +31,6 @@ export function useScheme(id: string) {
           throw new Error("Erro ao carregar esquema");
         }
         const schemeJson = await schemeRes.json();
-        console.log("[useScheme] schemeJson:", schemeJson);
 
         // pontos: se 404, usa []
         let pointsJson: any[] = [];
@@ -50,7 +45,6 @@ export function useScheme(id: string) {
         } else {
           pointsJson = await pointsRes.json();
         }
-        console.log("[useScheme] pointsJson:", pointsJson);
 
         if (!summaryRes.ok) {
           const txt = await summaryRes.text();
@@ -58,7 +52,6 @@ export function useScheme(id: string) {
           throw new Error("Erro ao carregar resumo");
         }
         const summaryJson = await summaryRes.json();
-        console.log("[useScheme] summaryJson:", summaryJson);
 
         const mapped = mapToOperationalScheme(
           schemeJson,

@@ -36,42 +36,25 @@ function mapRoutePointsToApiPayload(
   routePoints: RoutePoint[]
 ) {
   return routePoints.map((point, index) => {
-    // Se por algum motivo order não vier preenchido,
-    // garantimos uma ordem sequencial (1, 2, 3...).
     const ordem =
       typeof point.order === "number" && Number.isFinite(point.order)
         ? point.order
         : index + 1;
 
-    // Se você tiver o campo establishment no RoutePoint,
-    // pode incluir no type para evitar esse cast extra.
     const p = point as RoutePoint & { establishment?: string };
 
     return {
       scheme_id: schemeId,
-
-      // Ordem do ponto na rota
       ordem,
-
-      // Sempre usa o id da location (modelo atual)
       location_id: point.location.id,
-
-      // Tipo de ponto (PE, PP, PD, PA, TMJ, PL, etc.)
       tipo: point.type,
-
-      // Distâncias e tempos diretamente do modelo atual
       distancia_km: point.distanceKm,
       distancia_acumulada_km: point.cumulativeDistanceKm,
       tempo_deslocamento_min: point.driveTimeMin,
       tempo_no_local_min: point.stopTimeMin,
-
       velocidade_media_kmh: point.avgSpeed ?? null,
-
-      // Flags de início/fim da rota
       is_initial: !!point.isInitial,
       is_final: index === routePoints.length - 1,
-
-      // Campos textuais
       estabelecimento: p.establishment ?? null,
       justificativa: point.justification ?? null,
     };
@@ -86,22 +69,19 @@ function computeTotalDistanceKm(routePoints: RoutePoint[]): number {
 
   const last = routePoints[routePoints.length - 1] as any;
 
-  // 1) Preferir o acumulado novo
   if (typeof last.cumulativeDistanceKm === "number") {
     return last.cumulativeDistanceKm;
   }
 
-  // 2) Compatibilidade: se um dia vier accumulatedDistance antigo
   if (typeof last.accumulatedDistance === "number") {
     return last.accumulatedDistance;
   }
 
-  // 3) Fallback: somar as distâncias ponto a ponto
   return routePoints.reduce((sum, p) => {
     const d =
-      (p as any).distanceKm ?? // novo
-      (p as any).distance ?? // legado
-      (p as any).distancia_km ?? // legado
+      (p as any).distanceKm ??
+      (p as any).distance ??
+      (p as any).distancia_km ??
       0;
 
     return sum + (typeof d === "number" ? d : 0);
@@ -110,9 +90,13 @@ function computeTotalDistanceKm(routePoints: RoutePoint[]): number {
 
 /**
  * Service principal: cria ou atualiza esquema + pontos
+ *
+ * Agora recebe opcionalmente headers de autenticação (Authorization: Bearer ...),
+ * que serão passados pelo hook useSaveScheme via AuthContext.
  */
 export async function saveScheme(
-  draft: SchemeDraft
+  draft: SchemeDraft,
+  authHeaders: Record<string, string> = {}
 ): Promise<SaveSchemeResult> {
   // 🔎 validações mínimas (proteção extra além do que a tela já faz)
   if (!draft.lineCode) {
@@ -151,9 +135,16 @@ export async function saveScheme(
   if (!schemeId) {
     const res = await fetch(`${API_URL}/schemes`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders, // ✅ aplica Authorization aqui
+      },
       body: JSON.stringify(schemePayload),
     });
+
+    if (res.status === 401) {
+      throw new Error("Sua sessão expirou. Faça login novamente.");
+    }
 
     if (!res.ok) {
       const text = await res.text();
@@ -167,9 +158,16 @@ export async function saveScheme(
     // atualização
     const res = await fetch(`${API_URL}/schemes/${schemeId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders, // ✅ aplica Authorization aqui
+      },
       body: JSON.stringify(schemePayload),
     });
+
+    if (res.status === 401) {
+      throw new Error("Sua sessão expirou. Faça login novamente.");
+    }
 
     if (!res.ok) {
       const text = await res.text();
@@ -187,18 +185,22 @@ export async function saveScheme(
   // 2) Monta payload dos pontos
   const pointsPayload = mapRoutePointsToApiPayload(schemeId, draft.routePoints);
 
-  console.log(">> Enviando pointsPayload:", pointsPayload);
-
   // 3) Envia todos os pontos (substitui os existentes)
   const resPoints = await fetch(
     `${API_URL}/scheme-points/schemes/${schemeId}/points`,
-
     {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders, // ✅ e aqui também (rota protegida)
+      },
       body: JSON.stringify(pointsPayload),
     }
   );
+
+  if (resPoints.status === 401) {
+    throw new Error("Sua sessão expirou. Faça login novamente.");
+  }
 
   if (!resPoints.ok) {
     const text = await resPoints.text();
@@ -206,10 +208,13 @@ export async function saveScheme(
     throw new Error("Erro ao salvar pontos do esquema operacional.");
   }
 
-  // se quiser, aqui daria pra fazer um GET /schemes/:id/full e devolver tudo
   return { schemeId };
 }
 
+/**
+ * Busca esquema por (linha + sentido + horário)
+ * → apenas leitura, então continua SEM token (rota pública).
+ */
 export async function findSchemeByKey(
   lineCode: string,
   direction: "ida" | "volta",
