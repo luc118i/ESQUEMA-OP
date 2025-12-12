@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { HomePage } from "./pages/Home/HomePage";
 import { SchemeDetailPage } from "./pages/SchemeDetail/SchemeDetailPage";
 import { CreateSchemePage } from "./pages/SchemeCreate/CreateSchemePage";
 import { LocationCreatePage } from "./pages/Locations/LocationCreatePage";
 
-import { LoginModal } from "./components/auth/LoginModal"; // ✅ modal de login
-import { useAuth } from "./context/AuthContext"; // ✅ contexto de auth
+import { LoginModal } from "./components/auth/LoginModal";
+import { Footer } from "./components/Footer/Footer";
+import { printConsoleInfo } from "./utils/consoleInfo";
+
+import { useAuth } from "./context/AuthContext";
 
 // Tipos continuam IGUAIS
 export interface RoutePoint {
@@ -83,10 +86,8 @@ export default function App() {
   // ✅ controla abrir/fechar modal de login
   const [loginOpen, setLoginOpen] = useState(false);
 
-  // ✅ para eventualmente bloquear navegação se quiser
   const { isAuthenticated } = useAuth();
 
-  // 👉 Agora recebe APENAS o id
   const handleViewScheme = (schemeId: string) => {
     setSelectedSchemeId(schemeId);
     setCurrentView("detail");
@@ -98,7 +99,6 @@ export default function App() {
   };
 
   const handleCreateNew = () => {
-    // opcional: se quiser garantir, pode checar auth aqui também
     if (!isAuthenticated) {
       setLoginOpen(true);
       return;
@@ -114,7 +114,6 @@ export default function App() {
     setCurrentView("createLocation");
   };
 
-  // 👉 chamado pelo ícone de login no header da Home
   const handleLoginClick = () => {
     setLoginOpen(true);
   };
@@ -122,34 +121,55 @@ export default function App() {
   const handleCloseLogin = () => {
     setLoginOpen(false);
   };
+  useEffect(() => {
+    printConsoleInfo();
+  }, []);
+
+  useEffect(() => {
+    const favicon = document.querySelector("link[rel='icon']");
+
+    if (!favicon) return;
+
+    if (isAuthenticated) {
+      favicon.setAttribute("href", "./assets/logo-admin.png");
+    } else {
+      favicon.setAttribute("href", "/assets/favicon-guest.png");
+    }
+  }, [isAuthenticated]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {currentView === "home" && (
-        <HomePage
-          onViewScheme={handleViewScheme}
-          onCreateNew={handleCreateNew}
-          onCreateLocation={handleCreateLocation}
-          onLoginClick={handleLoginClick}
-        />
-      )}
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      {/* Conteúdo principal */}
+      <main className="flex-1 bg-gradient-to-br from-slate-50 to-slate-100">
+        {currentView === "home" && (
+          <HomePage
+            onViewScheme={handleViewScheme}
+            onCreateNew={handleCreateNew}
+            onCreateLocation={handleCreateLocation}
+            onLoginClick={handleLoginClick}
+          />
+        )}
 
-      {currentView === "detail" && selectedSchemeId && (
-        <SchemeDetailPage
-          schemeId={selectedSchemeId}
-          onBack={handleBackToHome}
-        />
-      )}
+        {currentView === "detail" && selectedSchemeId && (
+          <SchemeDetailPage
+            schemeId={selectedSchemeId}
+            onBack={handleBackToHome}
+          />
+        )}
 
-      {currentView === "create" && (
-        <CreateSchemePage onBack={handleBackToHome} />
-      )}
+        {currentView === "create" && (
+          <CreateSchemePage onBack={handleBackToHome} />
+        )}
 
-      {currentView === "createLocation" && (
-        <LocationCreatePage onBack={handleBackToHome} />
-      )}
+        {currentView === "createLocation" && (
+          <LocationCreatePage onBack={handleBackToHome} />
+        )}
+      </main>
 
-      {/* ✅ Modal de login sempre montado, controlado via state */}
+      {/* Footer global */}
+      <Footer />
+
+      {/* Modal de login montado globalmente */}
       <LoginModal open={loginOpen} onClose={handleCloseLogin} />
     </div>
   );

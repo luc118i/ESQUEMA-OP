@@ -72,12 +72,6 @@ export async function getOrCreateRoadSegmentDistanceKm(
     throw new Error("Erro ao carregar locais");
   }
 
-  console.log("[road-distance] ids recebidos:", {
-    fromLocationId,
-    toLocationId,
-  });
-  console.log("[road-distance] locais retornados do supabase:", locations);
-
   if (!locations || locations.length === 0) {
     throw new Error("Nenhum dos locais informados existe na tabela locations.");
   }

@@ -5,10 +5,7 @@ async function main() {
   const username = "monitoramento";
   const plainPassword = "monitora@#456";
 
-  console.log("Gerando hash da senha...");
   const passwordHash = await bcrypt.hash(plainPassword, 10);
-
-  console.log("Criando usuário no banco...");
 
   const { data, error } = await supabase
     .from("users")
@@ -27,9 +24,6 @@ async function main() {
     console.error("Erro ao criar usuário:", error);
     process.exit(1);
   }
-
-  console.log("Usuário criado com sucesso:");
-  console.log(data);
 
   process.exit(0);
 }

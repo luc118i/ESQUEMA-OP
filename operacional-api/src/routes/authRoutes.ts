@@ -21,8 +21,6 @@ interface UserEntity {
 async function findUserByIdentifier(
   identifier: string
 ): Promise<UserEntity | null> {
-  console.log("[findUserByIdentifier] buscando por:", identifier);
-
   const { data, error } = await supabase
     .from("users")
     .select("id, name, email, username, password_hash, role")
@@ -35,7 +33,6 @@ async function findUserByIdentifier(
     console.error("[findUserByIdentifier] erro Supabase:", error);
 
     if ((error as any).code === "PGRST116") {
-      console.log("[findUserByIdentifier] nenhum usuário encontrado");
       return null;
     }
 
@@ -43,15 +40,8 @@ async function findUserByIdentifier(
   }
 
   if (!data) {
-    console.log("[findUserByIdentifier] data vazio (sem erro)");
     return null;
   }
-
-  console.log(
-    "[findUserByIdentifier] usuário encontrado:",
-    data.username,
-    data.email
-  );
 
   return data as UserEntity;
 }
@@ -84,10 +74,7 @@ authRoutes.post(
     try {
       const user = await findUserByIdentifier(identifier);
 
-      console.log("[/auth/login] user encontrado?", !!user);
-
       if (!user) {
-        console.log("[/auth/login] usuário não encontrado");
         res.status(401).json({
           error: {
             code: "INVALID_CREDENTIALS",
@@ -103,10 +90,7 @@ authRoutes.post(
         user.password_hash
       );
 
-      console.log("[/auth/login] passwordMatches:", passwordMatches);
-
       if (!passwordMatches) {
-        console.log("[/auth/login] senha incorreta para:", user.username);
         res.status(401).json({
           error: {
             code: "INVALID_CREDENTIALS",
@@ -123,8 +107,6 @@ authRoutes.post(
         email: user.email,
         role: user.role,
       });
-
-      console.log("[/auth/login] login OK para:", user.username);
 
       res.json({
         accessToken,

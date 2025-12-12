@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { HomeSchemeCard } from "@/components/scheme/HomeSchemeCard";
 
-import { useAuth } from "@/context/AuthContext"; // NOVO
+import { useAuth } from "@/context/AuthContext";
+
+import adminLogo from "../../../assets/logo-admin.png";
 
 import { useSchemes } from "@/hooks/useSchemes";
 
@@ -38,7 +40,9 @@ export function HomePage({
   onCreateLocation,
   onLoginClick,
 }: HomePageProps) {
-  const { isAuthenticated, logout } = useAuth(); // NOVO
+  const { isAuthenticated, logout, user } = useAuth();
+
+  const isAdmin = isAuthenticated && user?.role === "admin";
 
   const { data: schemes, loading, error } = useSchemes();
   const [searchTerm, setSearchTerm] = useState("");
@@ -111,15 +115,30 @@ export function HomePage({
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-6">
           <div className="flex items-center justify-between">
             {/* Bloco logo + título */}
+
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg">
-                <Route className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-slate-900 font-semibold">
+              {/* LOGO DINÂMICO */}
+              {isAuthenticated ? (
+                // LOGO ADMIN
+                <div className="w-12 h-12 rounded-xl bg-[#3F474F] shadow-lg overflow-hidden flex items-center justify-center">
+                  <img
+                    src={adminLogo}
+                    alt="Logo Admin"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                // LOGO PADRÃO (AZUL)
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg">
+                  <Route className="w-6 h-6 text-white" />
+                </div>
+              )}
+
+              <div className="leading-tight">
+                <h1 className="text-slate-900 font-semibold text-base sm:text-lg">
                   Painel Operacional
                 </h1>
-                <p className="text-slate-600 text-sm">
+                <p className="text-slate-600 text-xs sm:text-sm">
                   Esquemas operacionais e rotas
                 </p>
               </div>
@@ -139,7 +158,12 @@ export function HomePage({
             ) : (
               // MODO AUTENTICADO — MENU SIMPLES + LOGOUT
               <div className="flex items-center gap-3">
-                <span className="text-slate-700 text-sm">Olá, operador</span>
+                <div className="flex flex-col leading-tight">
+                  <span className="text-slate-500 text-xs">Bem-vindo(a)</span>
+                  <span className="text-slate-800 font-medium">
+                    {user?.name ?? "Operador"}
+                  </span>
+                </div>
 
                 <button
                   onClick={logout}
